@@ -1,0 +1,33 @@
+{
+  "experiment_id": "CV-UNET-005",
+  "baseline_experiment": "CV-UNET-003",
+  "baseline_augmentation": true,
+  "experiment_augmentation": false,
+  "metrics": {
+    "IoU": {
+      "baseline": 0.6517796060663091,
+      "experiment": 0.6315037331243126,
+      "difference": -0.02027587294199651
+    },
+    "Dice": {
+      "baseline": 0.7891847116559495,
+      "experiment": 0.7741370372656022,
+      "difference": -0.015047674390347265
+    },
+    "Precision": {
+      "baseline": 0.804083871046055,
+      "experiment": 0.8193564797720833,
+      "difference": 0.015272608726028203
+    },
+    "Recall": {
+      "baseline": 0.7748276512893448,
+      "experiment": 0.7336477703929926,
+      "difference": -0.04117988089635227
+    },
+    "Accuracy": {
+      "baseline": 0.7795861691844703,
+      "experiment": 0.7720576250170827,
+      "difference": -0.007528544167387574
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "experiment_id": "CV-YOLO-001",
+  "model": "YOLO11n-Seg",
+  "model_checkpoint": "best.pt",
+  "dataset": "LADOS",
+  "test_images": 343,
+  "test_instances": 454,
+  "box_precision": 0.831,
+  "box_recall": 0.725,
+  "box_mAP50": 0.78,
+  "box_mAP50_95": 0.592,
+  "mask_precision": 0.801,
+  "mask_recall": 0.7,
+  "mask_mAP50": 0.736,
+  "mask_mAP50_95": 0.459,
+  "preprocess_ms_per_image": 2.9,
+  "inference_ms_per_image": 6.8,
+  "postprocess_ms_per_image": 3.5
+}

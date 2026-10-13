@@ -1,0 +1,22 @@
+{
+  "experiment_id": "CV-MASK2FORMER-001",
+  "what_was_tested": "Pretrained Mask2Former fine-tuned on LADOS",
+  "architecture": "Mask2Former",
+  "backbone": "Swin-Small",
+  "initialization": "ADE20K pretrained",
+  "best_epoch": 17,
+  "best_validation_loss": 33.479961234436935,
+  "test_metrics": {
+    "IoU": 0.8024827833666557,
+    "Dice": 0.8904193601980352,
+    "Precision": 0.841406511858086,
+    "Recall": 0.9454955061462184,
+    "Accuracy": 0.8760892462104816,
+    "TP": 11316544,
+    "FP": 2133012,
+    "FN": 652359,
+    "TN": 8376933,
+    "Average Batch Inference Time (s)": 0.2380256989302346
+  },
+  "limitation": "Results are specific to the evaluated LADOS dataset, model configuration, pretrained initialization, training setup, and hardware."
+}

@@ -1,0 +1,72 @@
+{
+  "experiment_id": "CV-YOLO-001",
+  "purpose": "Evaluate YOLO-based segmentation on the LADOS petroleum-contamination task",
+  "dataset": {
+    "name": "LADOS",
+    "task": "Binary petroleum segmentation",
+    "petroleum_classes": [
+      "Oil",
+      "Emulsion",
+      "Sheen"
+    ],
+    "train_images": 2370,
+    "validation_images": 675,
+    "test_images": 343
+  },
+  "model": {
+    "architecture": "YOLO11n-Seg",
+    "initialization": "Pretrained YOLO11n-Seg",
+    "task": "Instance segmentation",
+    "num_classes": 1,
+    "class_name": "petroleum"
+  },
+  "training": {
+    "epochs": 20,
+    "image_size": 640,
+    "batch_size": 16,
+    "optimizer": "AdamW (Ultralytics auto-selected)",
+    "best_epoch": null,
+    "best_validation_mask_map50_95": null
+  },
+  "native_yolo_test_metrics": {
+    "experiment_id": "CV-YOLO-001",
+    "model": "YOLO11n-Seg",
+    "model_checkpoint": "best.pt",
+    "dataset": "LADOS",
+    "test_images": 343,
+    "test_instances": 454,
+    "box_precision": 0.831,
+    "box_recall": 0.725,
+    "box_mAP50": 0.78,
+    "box_mAP50_95": 0.592,
+    "mask_precision": 0.801,
+    "mask_recall": 0.7,
+    "mask_mAP50": 0.736,
+    "mask_mAP50_95": 0.459,
+    "preprocess_ms_per_image": 2.9,
+    "inference_ms_per_image": 6.8,
+    "postprocess_ms_per_image": 3.5
+  },
+  "derived_pixel_level_metrics": {
+    "experiment_id": "CV-YOLO-001",
+    "evaluation": "Derived pixel-level evaluation",
+    "dataset": "LADOS",
+    "test_images": 343,
+    "IoU": 0.7511269745715169,
+    "Dice": 0.8578783668789183,
+    "Precision": 0.8099251757221116,
+    "Recall": 0.9118672354325333,
+    "Accuracy": 0.8428654833304268,
+    "TP": 64048516,
+    "FP": 15031031,
+    "FN": 6190345,
+    "TN": 49782396
+  },
+  "checkpoint": "/content/drive/MyDrive/PetroVision/results/cv_yolo_001/weights/best.pt",
+  "limitations": [
+    "Native YOLO metrics and derived pixel-level metrics represent different evaluation protocols.",
+    "Derived pixel-level evaluation combines all predicted petroleum instances into one binary mask.",
+    "Results are specific to the evaluated LADOS dataset and training configuration.",
+    "The RGB model detects visible petroleum-like regions and does not chemically identify petroleum type."
+  ]
+}

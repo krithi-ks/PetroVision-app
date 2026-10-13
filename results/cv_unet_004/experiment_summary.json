@@ -1,0 +1,23 @@
+{
+  "experiment_id": "CV-UNET-004",
+  "purpose": "Prediction threshold sensitivity analysis",
+  "model": "CV-UNET-003",
+  "retraining": false,
+  "tested_thresholds": [
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7
+  ],
+  "best_iou_threshold": 0.4,
+  "best_iou": 0.6696690114815453,
+  "best_dice_threshold": 0.4,
+  "best_dice": 0.8021578011887862,
+  "best_precision_threshold": 0.7,
+  "best_precision": 0.8697809287542804,
+  "best_recall_threshold": 0.3,
+  "best_recall": 0.9023560471665616,
+  "best_accuracy_threshold": 0.5,
+  "best_accuracy": 0.7795861691844707
+}

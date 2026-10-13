@@ -1,0 +1,180 @@
+{
+  "project": "PetroVision",
+  "component": "Computer Vision",
+  "summary_type": "CV architecture and efficiency study",
+  "models": {
+    "U-Net": {
+      "experiment_id": "CV-UNET-001",
+      "architecture": "Custom U-Net",
+      "task": "Binary semantic segmentation",
+      "test_metrics": {
+        "IoU": 0.6497578850953283,
+        "Dice": 0.7877008995871939,
+        "Precision": 0.7665690268091739,
+        "Recall": 0.8100308775165109,
+        "Accuracy": 0.7675129971073251
+      },
+      "overall_mean_metric": 0.7563143372231064,
+      "efficiency": {
+        "parameters": 1942577,
+        "parameters_million": 1.942577,
+        "checkpoint_mb": 22.33,
+        "mean_ms_per_image": 8.183345389916212,
+        "images_per_second": 122.19941263046688
+      }
+    },
+    "DeepLabV3+": {
+      "experiment_id": "CV-DEEPLAB-001",
+      "architecture": "DeepLabV3+ with ResNet-50 encoder",
+      "task": "Binary semantic segmentation",
+      "test_metrics": {
+        "IoU": 0.8201093165594036,
+        "Dice": 0.901164901578193,
+        "Precision": 0.8946386801668657,
+        "Recall": 0.907787037792853,
+        "Accuracy": 0.8939767287006875
+      },
+      "overall_mean_metric": 0.8835353329596005,
+      "efficiency": {
+        "parameters": 26677585,
+        "parameters_million": 26.677585,
+        "checkpoint_mb": 305.81,
+        "mean_ms_per_image": 32.89434582001377,
+        "images_per_second": 30.40036137127172
+      }
+    },
+    "SegFormer-B0": {
+      "experiment_id": "CV-SEGFORMER-001",
+      "architecture": "SegFormer-B0",
+      "task": "Binary semantic segmentation",
+      "test_metrics": {
+        "IoU": 0.8142821365771219,
+        "Dice": 0.8976356214512153,
+        "Precision": 0.9015606221249806,
+        "Recall": 0.8937446481101895,
+        "Accuracy": 0.8914643223709681
+      },
+      "overall_mean_metric": 0.879737470126895,
+      "efficiency": {
+        "parameters": 3714401,
+        "parameters_million": 3.714401,
+        "checkpoint_mb": 42.76,
+        "mean_ms_per_image": 38.84896031005155,
+        "images_per_second": 25.740714603918647
+      }
+    },
+    "Mask2Former": {
+      "experiment_id": "CV-MASK2FORMER-001",
+      "architecture": "Mask2Former with Swin-Small",
+      "task": "Binary semantic segmentation",
+      "test_metrics": {
+        "IoU": 0.8024827833666557,
+        "Dice": 0.8904193601980352,
+        "Precision": 0.841406511858086,
+        "Recall": 0.9454955061462184,
+        "Accuracy": 0.8760892462104816
+      },
+      "overall_mean_metric": 0.8711786815558954,
+      "efficiency": {
+        "parameters": 68721037,
+        "parameters_million": 68.721037,
+        "checkpoint_mb": 787.42,
+        "mean_ms_per_image": 150.86961464003252,
+        "images_per_second": 6.628239903614461
+      }
+    },
+    "YOLO11n-Seg": {
+      "experiment_id": "CV-YOLO-001",
+      "architecture": "YOLO11n-Seg",
+      "task": "Instance segmentation with derived pixel-level evaluation",
+      "test_metrics": {
+        "IoU": 0.7511269745715169,
+        "Dice": 0.8578783668789183,
+        "Precision": 0.8099251757221116,
+        "Recall": 0.9118672354325332,
+        "Accuracy": 0.8428654833304268
+      },
+      "overall_mean_metric": 0.8347326471871014,
+      "efficiency": {
+        "parameters": 2842803,
+        "parameters_million": 2.842803,
+        "checkpoint_mb": 5.722202301025391,
+        "mean_ms_per_image": 12.743071379991306,
+        "images_per_second": 78.47401699170912
+      }
+    }
+  },
+  "metric_observations": {
+    "IoU": {
+      "highest_model": "DeepLabV3+",
+      "value": 0.8201093165594036
+    },
+    "Dice": {
+      "highest_model": "DeepLabV3+",
+      "value": 0.901164901578193
+    },
+    "Precision": {
+      "highest_model": "SegFormer-B0",
+      "value": 0.9015606221249806
+    },
+    "Recall": {
+      "highest_model": "Mask2Former",
+      "value": 0.9454955061462184
+    },
+    "Accuracy": {
+      "highest_model": "DeepLabV3+",
+      "value": 0.8939767287006875
+    }
+  },
+  "overall_observation": {
+    "highest_overall_mean_model": "DeepLabV3+",
+    "overall_mean": 0.8835353329596005,
+    "definition": "Arithmetic mean of IoU, Dice, Precision, Recall and Accuracy"
+  },
+  "efficiency_observations": {
+    "lowest_measured_latency": {
+      "model": "U-Net",
+      "mean_ms_per_image": 8.183345389916212
+    },
+    "smallest_checkpoint": {
+      "model": "YOLO11n-Seg",
+      "checkpoint_mb": 5.722202301025391
+    },
+    "fewest_parameters": {
+      "model": "U-Net",
+      "parameters_million": 1.942577
+    }
+  },
+  "methodology": {
+    "dataset": "LADOS",
+    "task": "Binary petroleum-contamination semantic segmentation",
+    "petroleum_classes": [
+      "Oil",
+      "Emulsion",
+      "Sheen"
+    ],
+    "image_size": "256x256",
+    "test_images": 343,
+    "primary_metrics": [
+      "IoU",
+      "Dice",
+      "Precision",
+      "Recall",
+      "Accuracy"
+    ],
+    "efficiency_hardware": "NVIDIA Tesla T4",
+    "efficiency_batch_size": 1,
+    "efficiency_warmup_images": 20,
+    "efficiency_timed_images": 100,
+    "efficiency_timing_note": "PyTorch model forward-pass timing was used for U-Net, DeepLabV3+, SegFormer-B0 and Mask2Former. YOLO11n-Seg was measured using its Ultralytics prediction pipeline; therefore its latency should be interpreted separately."
+  },
+  "limitations": [
+    "Results are specific to the evaluated LADOS dataset and test split.",
+    "The PetroVision CV task groups Oil, Emulsion and Sheen into a binary petroleum class.",
+    "RGB segmentation identifies visible image regions and does not chemically identify petroleum type.",
+    "Image-space coverage should not be interpreted as physical oil volume, concentration or thickness.",
+    "The evaluated models used different architectures and pretrained configurations.",
+    "YOLO11n-Seg uses a different segmentation formulation from the semantic-segmentation models.",
+    "The efficiency measurements are hardware- and implementation-dependent."
+  ]
+}

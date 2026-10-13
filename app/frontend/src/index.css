@@ -1,0 +1,91 @@
+@import '@fontsource/ibm-plex-sans/latin-400.css';
+@import '@fontsource/ibm-plex-sans/latin-500.css';
+@import '@fontsource/ibm-plex-sans/latin-600.css';
+@import '@fontsource/ibm-plex-mono/latin-400.css';
+@import '@fontsource/ibm-plex-mono/latin-500.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================== design tokens ============================== */
+:root {
+  color-scheme: light;
+  --bg: #f3f5f8;
+  --surface: #ffffff;
+  --surface-2: #eceff4;
+  --line: #d8dde5;
+  --line-strong: #b9c2ce;
+  --ink: #0d1520;
+  --ink-2: #435061;
+  --ink-3: #6c7a8c;
+  --accent: #1747c8;
+  --accent-soft: #e7edff;
+  --signal: #d9480f;        /* petroleum-like regions */
+  --ok: #0b8a5f;
+  --warn: #a8670a;
+  --bad: #bb2d2d;
+
+  /* scanning environment (Live Scan viewport only) */
+  --hud-bg: #05090f;
+  --hud-cyan: #6fe3ff;
+  --hud-white: #e9f7ff;
+  --hud-line: rgba(111, 227, 255, 0.34);
+  --hud-glass: rgba(6, 13, 22, 0.46);
+
+  /* RGB channels of the tokens above: lets Tailwind generate opacity variants (bg-surface/95, border-ok/40 ...) */
+  --bg-rgb: 243 245 248; --surface-rgb: 255 255 255; --surface-2-rgb: 236 239 244;
+  --line-rgb: 216 221 229; --line-strong-rgb: 185 194 206;
+  --ink-rgb: 13 21 32; --ink-2-rgb: 67 80 97; --ink-3-rgb: 108 122 140;
+  --accent-rgb: 23 71 200; --accent-soft-rgb: 231 237 255; --signal-rgb: 217 72 15;
+  --ok-rgb: 11 138 95; --warn-rgb: 168 103 10; --bad-rgb: 187 45 45;
+  --hud-cyan-rgb: 111 227 255; --hud-white-rgb: 233 247 255; --hud-bg-rgb: 5 9 15;
+
+  --r: 4px;
+  --space: 4px;
+}
+
+html, body, #root { min-height: 100%; }
+body {
+  @apply bg-app font-sans text-ink antialiased;
+  font-feature-settings: 'tnum' 1, 'ss01' 1;
+}
+::selection { background: rgba(23, 71, 200, 0.22); }
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input[type='range'] { accent-color: var(--accent); }
+
+@layer components {
+  /* structured panels: hairline borders, no shadows */
+  .panel { @apply rounded-lg border border-line bg-surface; }
+  .panel-strong { @apply rounded-lg border border-line-strong bg-surface; }
+  .grid-bg {
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+  .label { @apply font-mono text-[10.5px] font-medium uppercase tracking-[0.14em] text-ink-3; }
+
+  /* technical buttons: flat, crisp, with a corner tick */
+  .btn {
+    @apply relative inline-flex h-9 items-center justify-center gap-2 rounded px-4 font-mono text-[11.5px] font-medium
+           uppercase tracking-[0.1em] transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  .btn-primary { @apply btn border border-ink bg-ink text-white hover:bg-accent hover:border-accent; }
+  .btn-oil { @apply btn border border-signal bg-signal text-white hover:brightness-110; }
+  .btn-ghost { @apply btn border border-line-strong bg-surface text-ink hover:border-ink; }
+  .btn-danger { @apply btn border border-bad bg-bad text-white hover:brightness-110; }
+  .btn-primary::after, .btn-oil::after {
+    content: ''; position: absolute; right: 3px; bottom: 3px; width: 6px; height: 6px;
+    border-right: 1.5px solid rgba(255, 255, 255, 0.7); border-bottom: 1.5px solid rgba(255, 255, 255, 0.7);
+  }
+  .seg { @apply inline-flex overflow-hidden rounded border border-line-strong bg-surface; }
+  .seg > button { @apply h-8 px-3 font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-ink-2 transition-colors hover:text-ink; }
+  .seg > button + button { @apply border-l border-line; }
+  .seg > button[aria-pressed='true'] { @apply bg-ink text-white; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+}

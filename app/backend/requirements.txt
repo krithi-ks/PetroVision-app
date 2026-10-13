@@ -1,0 +1,18 @@
+# PetroVision backend dependencies
+# NOTE: the repository-root requirements.txt is UTF-16 encoded and cannot be read by pip;
+# this file is the one to use for the web app.
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+numpy>=1.26
+pillow>=10.0
+opencv-python-headless>=4.9
+torch>=2.2
+torchvision>=0.17
+# model-specific
+transformers>=4.40            # SegFormer-B0, Mask2Former
+segmentation-models-pytorch   # DeepLabV3+ (ResNet-50)
+ultralytics>=8.3              # YOLO11n-Seg
+# tests
+pytest>=8
+httpx>=0.27

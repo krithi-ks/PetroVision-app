@@ -1,0 +1,15 @@
+{
+  "experiment_id": "CV-YOLO-001",
+  "evaluation": "Derived pixel-level evaluation",
+  "dataset": "LADOS",
+  "test_images": 343,
+  "IoU": 0.7511269745715169,
+  "Dice": 0.8578783668789183,
+  "Precision": 0.8099251757221116,
+  "Recall": 0.9118672354325333,
+  "Accuracy": 0.8428654833304268,
+  "TP": 64048516,
+  "FP": 15031031,
+  "FN": 6190345,
+  "TN": 49782396
+}

@@ -1,0 +1,28 @@
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+const backend = process.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000'
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    port: 5173,
+    proxy: { '/api': { target: backend, changeOrigin: true } },
+  },
+  build: {
+    chunkSizeWarningLimit: 1400,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          three: ['three', '@react-three/fiber', '@react-three/drei'],
+          charts: ['recharts'],
+        },
+      },
+    },
+  },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.js'],
+  },
+})

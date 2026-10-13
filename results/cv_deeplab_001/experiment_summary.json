@@ -1,0 +1,17 @@
+{
+  "experiment_id": "CV-DEEPLAB-001",
+  "what_was_tested": "Pretrained DeepLabV3+ fine-tuned on LADOS",
+  "architecture": "DeepLabV3+",
+  "encoder": "ResNet-50",
+  "initialization": "ImageNet pretrained",
+  "best_epoch": 1,
+  "validation_loss": 0.2612480165999989,
+  "test_metrics": {
+    "IoU": 0.8201093165594036,
+    "Dice": 0.901164901578193,
+    "Precision": 0.8946386801668657,
+    "Recall": 0.907787037792853,
+    "Accuracy": 0.8939767287006875
+  },
+  "limitation": "Results are specific to the evaluated LADOS dataset, architecture configuration, pretrained initialization, and training setup."
+}

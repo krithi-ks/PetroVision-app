@@ -1,0 +1,65 @@
+{
+  "experiment_id": "CV-YOLO-001",
+  "test_set": {
+    "total_images": 343,
+    "petroleum_present_images": 342,
+    "no_petroleum_images": 1
+  },
+  "petroleum_present_analysis": {
+    "mean_per_image_iou": 0.7388353495554778,
+    "median_per_image_iou": 0.8256970831940817,
+    "minimum_per_image_iou": 0.0,
+    "maximum_per_image_iou": 1.0,
+    "complete_misses": 5,
+    "complete_miss_rate": 0.014619883040935672
+  },
+  "no_petroleum_analysis": {
+    "images": 1,
+    "false_positive_images": 1,
+    "false_positive_rate": 1.0
+  },
+  "complete_miss_cases": [
+    {
+      "image": "117536352_223729965661888_4203326571010316604_n_jpg.rf.22c6252d7ceb63deb12794d4e23a0534.jpg",
+      "ground_truth_petroleum_pixels": 38236,
+      "predicted_petroleum_pixels": 0,
+      "IoU": 0.0
+    },
+    {
+      "image": "31_jpg.rf.e6639f0932d897e14a14811b21eec845.jpg",
+      "ground_truth_petroleum_pixels": 61059,
+      "predicted_petroleum_pixels": 0,
+      "IoU": 0.0
+    },
+    {
+      "image": "Oil-Pollution_original_oil-1-jpg_e676bc44-8c41-4586-ad96-8a07e167f8af_jpg.rf.c926bd9fadf276ad8dc2bf31d17c16a2.jpg",
+      "ground_truth_petroleum_pixels": 26594,
+      "predicted_petroleum_pixels": 0,
+      "IoU": 0.0
+    },
+    {
+      "image": "Train1-177-_jpg.rf.4bdae53753002c0eb32019fe0bf0b3ea.jpg",
+      "ground_truth_petroleum_pixels": 409088,
+      "predicted_petroleum_pixels": 0,
+      "IoU": 0.0
+    },
+    {
+      "image": "diesel_jpg.rf.7b65892653711f88bebdfc982a52ffd3.jpg",
+      "ground_truth_petroleum_pixels": 29729,
+      "predicted_petroleum_pixels": 0,
+      "IoU": 0.0
+    }
+  ],
+  "interpretation": {
+    "validated_findings": [
+      "The model completely missed 5 petroleum-present test images.",
+      "The test set contained one image without annotated petroleum.",
+      "The model produced a petroleum prediction on that no-petroleum image.",
+      "Per-image IoU varies substantially across the test set."
+    ],
+    "unverified_causes": [
+      "Visual causes of the complete misses require inspection of the corresponding images.",
+      "No cause of failure is inferred from filenames alone."
+    ]
+  }
+}

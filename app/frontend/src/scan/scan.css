@@ -1,0 +1,114 @@
+/* ============================================================
+   PetroVision Live Scan - scanning environment (viewport only).
+   Original design language: instrument glass, hairline cyan, quiet motion.
+   ============================================================ */
+.scan-stage {
+  --c: var(--hud-cyan);
+  position: relative;
+  background: radial-gradient(120% 90% at 50% 40%, #0b1522 0%, var(--hud-bg) 70%);
+  color: var(--hud-white);
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  overflow: hidden;
+  isolation: isolate;
+}
+.scan-stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
+
+/* subtle vignette keeps HUD legible without hiding the camera image */
+.scan-vignette { position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 55%, rgba(2, 6, 12, 0.5) 100%); }
+
+/* fine technical grid, faded in the centre so the scene stays clear */
+.scan-grid { position: absolute; inset: 0; pointer-events: none; opacity: 0.55;
+  background-image:
+    linear-gradient(rgba(111, 227, 255, 0.10) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(111, 227, 255, 0.10) 1px, transparent 1px),
+    linear-gradient(rgba(111, 227, 255, 0.18) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(111, 227, 255, 0.18) 1px, transparent 1px);
+  background-size: 28px 28px, 28px 28px, 140px 140px, 140px 140px;
+  -webkit-mask-image: radial-gradient(ellipse at center, transparent 18%, #000 85%);
+  mask-image: radial-gradient(ellipse at center, transparent 18%, #000 85%);
+}
+.scan-grid[data-active='true'] { animation: grid-drift 18s linear infinite; }
+@keyframes grid-drift { to { background-position: 0 28px, 28px 0, 0 140px, 140px 0; } }
+
+/* perspective floor lines */
+.scan-floor { position: absolute; left: -10%; right: -10%; bottom: 0; height: 34%; pointer-events: none; opacity: 0.32;
+  transform-origin: 50% 100%; transform: perspective(420px) rotateX(58deg);
+  background-image:
+    linear-gradient(rgba(111, 227, 255, 0.55) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(111, 227, 255, 0.55) 1px, transparent 1px);
+  background-size: 54px 54px;
+  -webkit-mask-image: linear-gradient(to top, #000, transparent 90%);
+  mask-image: linear-gradient(to top, #000, transparent 90%);
+}
+
+/* scanning beam */
+.scan-beam-track { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.scan-beam { position: absolute; inset: 0; transform: translateY(-100%); will-change: transform;
+  background: linear-gradient(to bottom, transparent 0%, rgba(111, 227, 255, 0.0) 55%, rgba(111, 227, 255, 0.16) 92%, rgba(190, 246, 255, 0.85) 99.4%, transparent 100%);
+  filter: drop-shadow(0 0 6px rgba(111, 227, 255, 0.7));
+  animation: beam 3.8s cubic-bezier(0.45, 0.05, 0.4, 0.95) infinite; }
+@keyframes beam { from { transform: translateY(-100%); } to { transform: translateY(0); } }
+.scan-beam[data-fast='true'] { animation-duration: 2.4s; }
+
+/* one-shot sweep that reaches a newly detected region */
+.scan-reveal { position: absolute; left: 0; right: 0; top: 0; height: 1.5px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(190, 246, 255, 0.95), transparent);
+  box-shadow: 0 0 14px rgba(111, 227, 255, 0.9); opacity: 0; }
+.scan-reveal[data-play='true'] { animation: reveal-sweep 0.7s cubic-bezier(0.3, 0.1, 0.2, 1) both; }
+@keyframes reveal-sweep { 0% { opacity: 0; transform: translateY(0); } 12% { opacity: 1; } 100% { opacity: 0; transform: translateY(var(--reveal-y, 40%)); } }
+
+/* corner targeting brackets */
+.hud-corner { position: absolute; width: 34px; height: 34px; pointer-events: none; border: 0 solid var(--c); opacity: 0.9;
+  filter: drop-shadow(0 0 4px rgba(111, 227, 255, 0.55)); transition: width .45s, height .45s, opacity .45s; }
+.hud-corner.tl { top: 14px; left: 14px; border-top-width: 1.5px; border-left-width: 1.5px; }
+.hud-corner.tr { top: 14px; right: 14px; border-top-width: 1.5px; border-right-width: 1.5px; }
+.hud-corner.bl { bottom: 14px; left: 14px; border-bottom-width: 1.5px; border-left-width: 1.5px; }
+.hud-corner.br { bottom: 14px; right: 14px; border-bottom-width: 1.5px; border-right-width: 1.5px; }
+.scan-stage[data-lock='true'] .hud-corner { width: 44px; height: 44px; }
+
+/* central reticle */
+.reticle { position: absolute; left: 50%; top: 50%; width: 84px; height: 84px; margin: -42px 0 0 -42px; pointer-events: none;
+  transition: opacity .6s, transform .6s; }
+.reticle[data-dim='true'] { opacity: 0.28; transform: scale(0.82); }
+.reticle .ring-slow { transform-origin: 42px 42px; animation: spin 22s linear infinite; }
+.reticle .ring-fast { transform-origin: 42px 42px; animation: spin 2.6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* glass HUD panels */
+.hud-glass { background: var(--hud-glass); border: 1px solid var(--hud-line); backdrop-filter: blur(7px) saturate(1.15);
+  -webkit-backdrop-filter: blur(7px) saturate(1.15); box-shadow: inset 0 0 22px rgba(111, 227, 255, 0.05), 0 0 0 1px rgba(2, 8, 14, 0.4);
+  border-radius: 3px; }
+.hud-label { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: rgba(214, 240, 252, 0.72); }
+.hud-value { font-size: 17px; letter-spacing: 0.02em; color: var(--hud-white); font-variant-numeric: tabular-nums; }
+.hud-tag { font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase; color: rgba(214, 240, 252, 0.8); }
+
+/* instance bracket + floating label */
+.inst { position: absolute; pointer-events: none; transition: left .22s linear, top .22s linear, width .22s linear, height .22s linear, opacity .4s; }
+.inst-corner { position: absolute; width: 14px; height: 14px; border: 0 solid var(--ic); filter: drop-shadow(0 0 5px var(--ic)); }
+.inst-corner.tl { top: -3px; left: -3px; border-top-width: 1.5px; border-left-width: 1.5px; }
+.inst-corner.tr { top: -3px; right: -3px; border-top-width: 1.5px; border-right-width: 1.5px; }
+.inst-corner.bl { bottom: -3px; left: -3px; border-bottom-width: 1.5px; border-left-width: 1.5px; }
+.inst-corner.br { bottom: -3px; right: -3px; border-bottom-width: 1.5px; border-right-width: 1.5px; }
+.inst[data-new='true'] .inst-corner { animation: bracket-in .6s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes bracket-in { from { opacity: 0; transform: scale(2.2); } to { opacity: 1; transform: none; } }
+.inst-label { position: absolute; left: -3px; bottom: calc(100% + 8px); min-width: 138px; padding: 5px 8px 6px; pointer-events: auto;
+  border-left: 1.5px solid var(--ic); background: linear-gradient(90deg, rgba(5, 12, 20, 0.7), rgba(5, 12, 20, 0.25));
+  animation: label-in .45s .32s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.inst-label[data-inside='true'] { bottom: auto; top: 78px; left: 14px; background: linear-gradient(90deg, rgba(5, 12, 20, 0.78), rgba(5, 12, 20, 0.35)); }
+@keyframes label-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* data readout appearing */
+.fade-in { animation: label-in .4s ease-out both; }
+.pulse-dot { animation: dot 2.2s ease-in-out infinite; }
+@keyframes dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.glow-pulse { animation: glow 2.6s ease-in-out infinite; }
+@keyframes glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(111, 227, 255, 0); } 50% { box-shadow: 0 0 14px 1px rgba(111, 227, 255, 0.28); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-beam, .scan-grid[data-active='true'], .reticle .ring-slow, .reticle .ring-fast, .pulse-dot, .glow-pulse { animation: none !important; }
+  .scan-beam { transform: translateY(-4%); }
+}
+
+.hud-chip { background: rgba(4, 10, 18, 0.5); border-left: 1.5px solid var(--hud-line); padding: 4px 9px; backdrop-filter: blur(4px); }
+.hud-foot { background: linear-gradient(to top, rgba(4, 10, 18, 0.85), transparent); }

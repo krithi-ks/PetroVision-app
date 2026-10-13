@@ -1,0 +1,22 @@
+{
+  "experiment_id": "CV-DEEPLAB-001",
+  "architecture": "DeepLabV3+",
+  "encoder": "ResNet-50",
+  "encoder_initialization": "ImageNet pretrained",
+  "image_size": [
+    256,
+    256
+  ],
+  "threshold": 0.5,
+  "best_epoch": 1,
+  "validation_loss": 0.2612480165999989,
+  "IoU": 0.8201093165594036,
+  "Dice": 0.901164901578193,
+  "Precision": 0.8946386801668657,
+  "Recall": 0.907787037792853,
+  "Accuracy": 0.8939767287006875,
+  "TP": 10865215,
+  "FP": 1279593,
+  "FN": 1103688,
+  "TN": 9230352
+}
