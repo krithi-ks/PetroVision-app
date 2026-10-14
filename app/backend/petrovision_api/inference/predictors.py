@@ -293,7 +293,6 @@ class Mask2FormerPredictor(BasePredictor):
 
 class YoloPredictor(BasePredictor):
     DEFAULT_IMGSZ = 640
-    CONF = _yolo_confidence_threshold()
 
     def _load(self):
         from ultralytics import YOLO
@@ -325,7 +324,7 @@ class YoloPredictor(BasePredictor):
         try:
             with self.lock:
                 result = self._yolo.predict(
-                    source=image, imgsz=self.imgsz, conf=self.CONF, retina_masks=True,
+                    source=image, imgsz=self.imgsz, conf=_yolo_confidence_threshold(), retina_masks=True,
                     device=self._yolo_device, verbose=False,
                 )[0]
         except Exception as exc:
