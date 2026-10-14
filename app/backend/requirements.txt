@@ -11,6 +11,7 @@ torch>=2.2
 torchvision>=0.17
 # model-specific
 transformers>=4.40            # SegFormer-B0, Mask2Former
+scipy>=1.10                   # Required by the Mask2Former loss/model implementation
 segmentation-models-pytorch   # DeepLabV3+ (ResNet-50)
 ultralytics>=8.3              # YOLO11n-Seg
 # tests
