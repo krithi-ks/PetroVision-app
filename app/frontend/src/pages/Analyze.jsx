@@ -53,6 +53,7 @@ function InstanceCard({ inst, selected, hidden, onSelect, onToggle, index }) {
 export default function Analyze() {
   const { models, modelsLoading, modelsError, refreshModels, current, setCurrent, run, analyze, history, openAnalysis, removeAnalysis, play } = useApp()
   const [file, setFile] = useState(null)
+  const [fileAnalyzed, setFileAnalyzed] = useState(false)
   const [preview, setPreview] = useState(null)
   const [modelId, setModelId] = useState(null)
   const [mode, setMode] = useState('instances')
@@ -102,18 +103,24 @@ export default function Analyze() {
     if (!f.type.startsWith('image/')) return setFileError('Please choose an image file (JPEG, PNG, WebP or BMP).')
     if (f.size > 25 * 1024 * 1024) return setFileError('This file is larger than 25 MB.')
     setFile(f)
+    setFileAnalyzed(false)
     setPreview((old) => { if (old) URL.revokeObjectURL(old); return URL.createObjectURL(f) })
     audio.play('ui_expand')
   }, [])
 
-  const execute = async () => { if (file && modelId) { await audio.unlock(); await analyze(file, modelId); setFile(null) } }
+  const execute = async () => {
+    if (!file || !modelId || running) return
+    await audio.unlock()
+    const result = await analyze(file, modelId)
+    if (result) setFileAnalyzed(true)
+  }
 
   const opts = useMemo(() => ({ mode, color, opacity, showBoxes, showLabels, hidden, selected, hover }), [mode, color, opacity, showBoxes, showLabels, hidden, selected, hover])
   const resetDisplay = () => { setMode(view?.instances.some((i) => i.kind === 'instance') ? 'instances' : 'overlay'); setColor(DEFAULTS.color); setOpacity(DEFAULTS.opacity); setShowBoxes(false); setShowLabels(true); setHidden(new Set()); setSelected(null) }
   const toggleHidden = (idx) => setHidden((h) => { const n = new Set(h); n.has(idx) ? n.delete(idx) : n.add(idx); return n })
   const download = () => canvasRef.current?.toBlob((b) => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `petrovision_${view.id || 'analysis'}_${mode}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000) })
 
-  const showPreview = !!file && !running                 // a new image is waiting to be analysed
+  const showPreview = !!file && !fileAnalyzed && !running // show preview until this selected file has a result
   const noModels = !modelsLoading && models.length > 0 && !models.some((m) => m.availability.available)
   const m = view?.measurements
   const instCount = view?.instance_count ?? 0
@@ -238,7 +245,7 @@ export default function Analyze() {
               <ul className="space-y-1.5">
                 {history.items.slice(0, 6).map((h) => (
                   <li key={h.id} className="group flex items-center gap-2">
-                    <button type="button" onClick={() => { setFile(null); openAnalysis(h.id) }} className={`flex min-w-0 flex-1 items-center gap-2.5 border p-1.5 text-left transition-colors ${view?.id === h.id ? 'border-ink bg-surface-2' : 'border-line hover:border-line-strong'}`}>
+                    <button type="button" onClick={() => { setFile(null); setFileAnalyzed(false); openAnalysis(h.id) }} className={`flex min-w-0 flex-1 items-center gap-2.5 border p-1.5 text-left transition-colors ${view?.id === h.id ? 'border-ink bg-surface-2' : 'border-line hover:border-line-strong'}`}>
                       <img src={h.thumb_url} alt="" className="h-10 w-14 shrink-0 object-cover" loading="lazy" />
                       <span className="min-w-0"><span className="block truncate font-mono text-[11px] text-ink">{h.model.label}</span><span className="block truncate text-[11px] text-ink-3">{h.instance_count} · {fmtPct(h.coverage_percent, 1)} · {new Date(h.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></span>
                     </button>
