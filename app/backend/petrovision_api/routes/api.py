@@ -11,9 +11,9 @@ import time
 import os
 import httpx
 
-from PIL import Image
 
 from fastapi import HTTPException
+
 from fastapi import APIRouter, Body, File, Form, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 from starlette.concurrency import run_in_threadpool
@@ -73,7 +73,7 @@ def _model_payload(request: Request, spec, rows_by_name: dict | None = None) -> 
             "message": availability.message,
         },
         "loaded": st.manager.is_loaded(spec.id),
-        "research_result": research,
+        "research_result": research,   # saved experiment metrics (NOT live output)
     }
 
 
@@ -83,56 +83,97 @@ async def _read_upload(file: UploadFile, limit: int) -> bytes:
         raise PayloadTooLargeError(f"File is larger than the {limit // 1_048_576} MB upload limit.")
     return data
 
-
 async def _send_telegram_photo(
     photo: bytes,
     filename: str,
     caption: str,
 ) -> dict:
-    """Send one evidence image to the configured Telegram chat."""
+    """Send incident evidence to the configured Telegram chat."""
+
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+
     if not token or not chat_id:
-        raise HTTPException(status_code=503, detail="Telegram is not configured. Check backend environment variables.")
+        raise HTTPException(
+            status_code=503,
+            detail="Telegram is not configured. Check the backend environment variables.",
+        )
 
     url = f"https://api.telegram.org/bot{token}/sendPhoto"
+
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 url,
-                data={"chat_id": chat_id, "caption": caption[:1024]},
-                files={"photo": (filename, photo, "image/jpeg")},
+                data={
+                    "chat_id": chat_id,
+                    "caption": caption[:1024],
+                },
+                files={
+                    "photo": (
+                        filename,
+                        photo,
+                        "image/jpeg",
+                    ),
+                },
             )
+
+        # Log Telegram's response without exposing the bot token.
         if response.is_error:
-            log.error("Telegram API returned HTTP %s: %s", response.status_code, response.text[:1000])
-            raise HTTPException(status_code=502, detail="Telegram rejected the incident alert. Check backend logs.")
+            log.error(
+                "Telegram API returned HTTP %s: %s",
+                response.status_code,
+                response.text[:1000],
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="Telegram rejected the incident alert. Check the backend logs.",
+            )
+
         payload = response.json()
+
         if not payload.get("ok"):
-            log.error("Telegram API reported failure: %s", payload.get("description", "Unknown Telegram API error"))
-            raise HTTPException(status_code=502, detail="Telegram did not accept the incident alert. Check backend logs.")
-        return {"sent": True, "message_id": payload["result"]["message_id"]}
+            log.error(
+                "Telegram API reported failure: %s",
+                payload.get("description", "Unknown Telegram API error"),
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="Telegram did not accept the incident alert. Check the backend logs.",
+            )
+
+        return {
+            "sent": True,
+            "message_id": payload["result"]["message_id"],
+        }
+
     except httpx.HTTPError as exc:
         log.exception("Telegram network request failed: %s", type(exc).__name__)
-        raise HTTPException(status_code=502, detail="Could not reach Telegram. Check backend logs.") from exc
-
+        raise HTTPException(
+            status_code=502,
+            detail="Could not reach Telegram. Check the backend logs.",
+        ) from exc
+        
 
 async def _send_telegram_media_group(
     original: bytes,
-    overlay: bytes,
+    predicted: bytes,
     caption: str,
     incident_id: str,
 ) -> dict:
-    """Send original + prediction overlay as two photos in one Telegram album."""
+    """Send the original and predicted overlay together as a Telegram photo album."""
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
     if not token or not chat_id:
-        raise HTTPException(status_code=503, detail="Telegram is not configured. Check backend environment variables.")
+        raise HTTPException(
+            status_code=503,
+            detail="Telegram is not configured. Check the backend environment variables.",
+        )
 
     url = f"https://api.telegram.org/bot{token}/sendMediaGroup"
-    # Telegram captions for media-group photos are limited; attach the caption to the first image.
     media = [
         {"type": "photo", "media": "attach://original", "caption": caption[:1024]},
-        {"type": "photo", "media": "attach://overlay"},
+        {"type": "photo", "media": "attach://predicted"},
     ]
     try:
         async with httpx.AsyncClient(timeout=45.0) as client:
@@ -141,21 +182,46 @@ async def _send_telegram_media_group(
                 data={"chat_id": chat_id, "media": json.dumps(media)},
                 files={
                     "original": (f"{incident_id}-original.jpg", original, "image/jpeg"),
-                    "overlay": (f"{incident_id}-predicted.jpg", overlay, "image/jpeg"),
+                    "predicted": (f"{incident_id}-predicted.jpg", predicted, "image/jpeg"),
                 },
             )
         if response.is_error:
-            log.error("Telegram media-group API returned HTTP %s: %s", response.status_code, response.text[:1000])
-            raise HTTPException(status_code=502, detail="Telegram rejected the evidence images. Check backend logs.")
+            log.error(
+                "Telegram media group returned HTTP %s: %s",
+                response.status_code,
+                response.text[:1000],
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="Telegram rejected the incident images. Check the backend logs.",
+            )
         payload = response.json()
         if not payload.get("ok"):
-            log.error("Telegram media-group failure: %s", payload.get("description", "Unknown Telegram API error"))
-            raise HTTPException(status_code=502, detail="Telegram did not accept both evidence images. Check backend logs.")
-        messages = payload.get("result", [])
-        return {"sent": True, "message_ids": [m.get("message_id") for m in messages]}
+            log.error(
+                "Telegram media-group failure: %s",
+                payload.get("description", "Unknown Telegram API error"),
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="Telegram did not accept both incident images. Check the backend logs.",
+            )
+        return {
+            "sent": True,
+            "message_ids": [m.get("message_id") for m in payload.get("result", [])],
+        }
     except httpx.HTTPError as exc:
         log.exception("Telegram media-group request failed: %s", type(exc).__name__)
-        raise HTTPException(status_code=502, detail="Could not reach Telegram. Check backend logs.") from exc
+        raise HTTPException(
+            status_code=502,
+            detail="Could not reach Telegram. Check the backend logs.",
+        ) from exc
+
+
+def _encode_jpeg(image) -> bytes:
+    """Normalize an image to JPEG bytes before sending it as image/jpeg to Telegram."""
+    buf = io.BytesIO()
+    image.convert("RGB").save(buf, format="JPEG", quality=90, optimize=True)
+    return buf.getvalue()
 
 
 # ------------------------------------------------------------------------------ health
@@ -185,7 +251,7 @@ def health(request: Request):
         info["device"] = describe_device(st.manager.device)
         if st.settings.device_preference in ("cuda", "gpu") and info["device"]["type"] != "cuda":
             info["device_warning"] = "CUDA was requested but is not available; running on CPU."
-    except Exception as exc:
+    except Exception as exc:  # pragma: no cover - torch is a hard requirement
         info["status"] = "degraded"
         info["torch_error"] = str(exc)
     return info
@@ -193,46 +259,108 @@ def health(request: Request):
 
 @router.get("/status")
 def status(request: Request):
+    """Minimal readiness summary for the interface."""
     st = _state(request)
     available = [s.id for s in st.manager.all_specs() if st.manager.availability(s.id).status == "available"]
     return {"ready": bool(available), "models_available": len(available), "models_total": len(st.manager.all_specs())}
 
 
 # ------------------------------------------------------------------------------ environmental context
+
 @router.get("/geocode")
 async def geocode(query: str = Query(..., min_length=2)):
+    """Search for real-world locations using Open-Meteo geocoding."""
+
     query = query.strip()
+
     if not query:
-        raise HTTPException(status_code=400, detail="Location query is required.")
+        raise HTTPException(
+            status_code=400,
+            detail="Location query is required.",
+        )
+
     url = "https://geocoding-api.open-meteo.com/v1/search"
-    params = {"name": query, "count": 10, "language": "en", "format": "json"}
+
+    params = {
+        "name": query,
+        "count": 10,
+        "language": "en",
+        "format": "json",
+    }
+
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
+
         data = response.json()
-        return {"results": [{"name": item.get("name"), "latitude": item.get("latitude"), "longitude": item.get("longitude"),
-                             "country": item.get("country"), "country_code": item.get("country_code"), "admin1": item.get("admin1"),
-                             "admin2": item.get("admin2"), "timezone": item.get("timezone")} for item in data.get("results", [])]}
+
+        return {
+            "results": [
+                {
+                    "name": item.get("name"),
+                    "latitude": item.get("latitude"),
+                    "longitude": item.get("longitude"),
+                    "country": item.get("country"),
+                    "country_code": item.get("country_code"),
+                    "admin1": item.get("admin1"),
+                    "admin2": item.get("admin2"),
+                    "timezone": item.get("timezone"),
+                }
+                for item in data.get("results", [])
+            ]
+        }
+
     except httpx.HTTPError as exc:
         log.exception("Marine location search failed")
-        raise HTTPException(status_code=502, detail="Location search service is temporarily unavailable.") from exc
-
-
+        raise HTTPException(
+            status_code=502,
+            detail="Location search service is temporarily unavailable.",
+        ) from exc
+        
+        
 @router.get("/marine")
-async def marine(latitude: float = Query(..., ge=-90, le=90), longitude: float = Query(..., ge=-180, le=180)):
+async def marine(
+    latitude: float = Query(..., ge=-90, le=90),
+    longitude: float = Query(..., ge=-180, le=180),
+):
+    """Return real marine environmental conditions for selected coordinates."""
+
     url = "https://marine-api.open-meteo.com/v1/marine"
-    params = {"latitude": latitude, "longitude": longitude,
-              "hourly": "wave_height,wave_direction,wave_period,sea_surface_temperature,ocean_current_velocity,ocean_current_direction",
-              "forecast_days": 2, "timezone": "auto", "cell_selection": "sea"}
+
+    params = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "hourly": ",".join([
+            "wave_height",
+            "wave_direction",
+            "wave_period",
+            "sea_surface_temperature",
+            "ocean_current_velocity",
+            "ocean_current_direction",
+        ]),
+        "forecast_days": 2,
+        "timezone": "auto",
+        "cell_selection": "sea",
+    }
+
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
+
         return response.json()
+
     except httpx.HTTPError as exc:
-        log.exception("Marine data request failed for %.6f, %.6f", latitude, longitude)
-        raise HTTPException(status_code=502, detail="Marine data service is temporarily unavailable.") from exc
+        log.exception(
+            "Marine data request failed for %.6f, %.6f",
+            latitude,
+            longitude,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Marine data service is temporarily unavailable.",
+        ) from exc
 
 
 # ------------------------------------------------------------------------------ models
@@ -244,7 +372,11 @@ def list_models(request: Request):
     except ResultsUnavailableError:
         rows = {}
     models = [_model_payload(request, spec, rows) for spec in st.manager.all_specs()]
-    return {"models": models, "available_count": sum(1 for m in models if m["availability"]["available"]), "total": len(models)}
+    return {
+        "models": models,
+        "available_count": sum(1 for m in models if m["availability"]["available"]),
+        "total": len(models),
+    }
 
 
 @router.get("/models/{model_id}")
@@ -255,6 +387,7 @@ def model_detail(model_id: str, request: Request):
 
 @router.post("/models/{model_id}/load")
 async def load_model(model_id: str, request: Request):
+    """Load the real checkpoint and warm it up (output discarded). Idempotent."""
     st = _state(request)
     st.manager.spec(model_id)
     predictor = await run_in_threadpool(st.manager.preload, model_id)
@@ -279,24 +412,31 @@ def _analyze_bytes(request: Request, model_id: str, data: bytes, *, save: bool =
             result["analysis_id"] = record["id"]
             result["created_at"] = record["created_at"]
             result["urls"] = st.history.urls(record["id"])
-        except Exception:
+        except Exception:                                  # never lose a real result because the disk write failed
             log.exception("Could not persist analysis")
             result["analysis_id"] = None
     return result
 
 
 @router.post("/infer/image")
-async def infer_image(request: Request, file: UploadFile = File(...), model_id: str = Form(...), save: bool = Form(True)):
+async def infer_image(
+    request: Request,
+    file: UploadFile = File(...),
+    model_id: str = Form(...),
+    save: bool = Form(True),
+):
     st = _state(request)
-    st.manager.spec(model_id)
+    st.manager.spec(model_id)   # 404 for unknown ids before doing work
     data = await _read_upload(file, st.settings.max_upload_bytes)
-    return await run_in_threadpool(_analyze_bytes, request, model_id, data, save=save,
-                                   max_side=st.settings.max_mask_side, filename=file.filename)
+    return await run_in_threadpool(
+        _analyze_bytes, request, model_id, data,
+        save=save, max_side=st.settings.max_mask_side, filename=file.filename,
+    )
 
 
 @router.post("/infer/frame")
 async def infer_frame(request: Request, model_id: str = Query(...)):
-    """Webcam frame (raw JPEG/PNG bytes in the body). Returns lightweight prediction labels for live scan."""
+    """Webcam frame (raw JPEG/PNG bytes in the body). Returns a lightweight payload."""
     st = _state(request)
     st.manager.spec(model_id)
     declared = request.headers.get("content-length")
@@ -316,7 +456,6 @@ async def infer_frame(request: Request, model_id: str = Query(...)):
         result.pop(key, None)
     return result
 
-
 @router.post("/incidents/telegram")
 async def send_telegram_incident(
     file: UploadFile = File(...),
@@ -326,31 +465,41 @@ async def send_telegram_incident(
     model_id: str = Form(...),
     summary: str = Form(...),
 ):
-    """Send original captured image and annotated prediction image to Telegram."""
-    original_bytes = await _read_upload(file, 10 * 1024 * 1024)
-    overlay_bytes = await _read_upload(overlay_file, 10 * 1024 * 1024)
-    if not original_bytes or not overlay_bytes:
-        raise HTTPException(status_code=400, detail="Original and predicted evidence images are both required.")
+    """Send the original captured frame and its same-frame prediction overlay to Telegram."""
+    original_data = await _read_upload(file, 10 * 1024 * 1024)
+    predicted_data = await _read_upload(overlay_file, 10 * 1024 * 1024)
+    if not original_data or not predicted_data:
+        raise HTTPException(
+            status_code=400,
+            detail="Both the original and predicted evidence images are required.",
+        )
+
     try:
-        original_img = decode_image(original_bytes)
-        overlay_img = decode_image(overlay_bytes)
+        original_image = decode_image(original_data)
+        predicted_image = decode_image(predicted_data)
     except Exception as exc:
-        raise HTTPException(status_code=400, detail="Could not decode incident images.") from exc
-    if original_img.size != overlay_img.size:
-        overlay_img = overlay_img.resize(original_img.size, Image.Resampling.NEAREST)
-        buf = io.BytesIO()
-        overlay_img.save(buf, format="JPEG", quality=90)
-        overlay_bytes = buf.getvalue()
+        raise HTTPException(status_code=400, detail="Could not decode incident evidence images.") from exc
+
+    if predicted_image.size != original_image.size:
+        from PIL import Image
+        predicted_image = predicted_image.resize(original_image.size, Image.Resampling.NEAREST)
 
     caption = (
         "🚨 PETROVISION — POSSIBLE OIL-SPILL VISUAL DETECTION\n\n"
-        f"Incident: {incident_id}\nTime (UTC): {timestamp}\nModel: {model_id}\n\n"
-        f"{summary}\n\n"
-        "AI visual indication only; not chemical confirmation."
+        f"Incident: {incident_id}\n"
+        f"Time (UTC): {timestamp}\n"
+        f"Model: {model_id}\n\n"
+        f"Evidence summary: {summary}\n\n"
+        "AI visual indication only; not chemical confirmation of petroleum contamination."
     )
-    delivery = await _send_telegram_media_group(original_bytes, overlay_bytes, caption, incident_id)
-    return {"incident_id": incident_id, **delivery}
 
+    delivery = await _send_telegram_media_group(
+        original=_encode_jpeg(original_image),
+        predicted=_encode_jpeg(predicted_image),
+        caption=caption,
+        incident_id=incident_id,
+    )
+    return {"incident_id": incident_id, **delivery}
 
 # ------------------------------------------------------------------------------ results
 @router.get("/results/comparison")
@@ -372,7 +521,7 @@ def results_summary(request: Request):
 def results_history(model_id: str, request: Request):
     st = _state(request)
     st.manager.spec(model_id)
-    return _state(request).results.history(model_id)
+    return st.results.history(model_id)
 
 
 @router.get("/results/dekerf")
