@@ -435,8 +435,12 @@ async def infer_image(
 
 
 @router.post("/infer/frame")
-async def infer_frame(request: Request, model_id: str = Query(...)):
-    """Webcam frame (raw JPEG/PNG bytes in the body). Returns a lightweight payload."""
+async def infer_frame(
+    request: Request,
+    model_id: str = Query(...),
+    include_overlay: bool = Query(False),
+):
+    """Webcam frame (raw JPEG/PNG bytes in the body). Returns a lightweight payload unless overlay is requested."""
     st = _state(request)
     st.manager.spec(model_id)
     declared = request.headers.get("content-length")
@@ -450,7 +454,7 @@ async def infer_frame(request: Request, model_id: str = Query(...)):
     result = await run_in_threadpool(
         _analyze_bytes, request, model_id, data,
         max_side=min(st.settings.max_mask_side, FRAME_MAX_MASK_SIDE),
-        include_mask_png=False, include_contours=True, include_overlay=True,
+        include_mask_png=False, include_contours=True, include_overlay=include_overlay,
     )
     for key in ("notes", "contours"):
         result.pop(key, None)
