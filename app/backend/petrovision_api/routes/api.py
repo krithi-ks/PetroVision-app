@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 import logging
 import platform
 import sys
@@ -157,7 +158,7 @@ async def _send_telegram_media_group(
         async with httpx.AsyncClient(timeout=45.0) as client:
             response = await client.post(
                 url,
-                data={"chat_id": chat_id, "media": __import__("json").dumps(media)},
+                data={"chat_id": chat_id, "media": json.dumps(media)},
                 files={
                     "original": (f"{incident_id}-original.jpg", original, "image/jpeg"),
                     "overlay": (f"{incident_id}-predicted.jpg", overlay, "image/jpeg"),
@@ -329,7 +330,7 @@ async def infer_frame(request: Request, model_id: str = Query(...)):
     result = await run_in_threadpool(
         _analyze_bytes, request, model_id, data,
         max_side=min(st.settings.max_mask_side, FRAME_MAX_MASK_SIDE),
-        include_mask_png=False, include_contours=True, include_overlay=False,
+        include_mask_png=False, include_contours=True, include_overlay=True,
     )
     for key in ("notes", "contours"):
         result.pop(key, None)
