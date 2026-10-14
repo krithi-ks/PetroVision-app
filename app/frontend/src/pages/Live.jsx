@@ -211,7 +211,7 @@ export default function Live() {
       `Inference time: ${Number.isFinite(inferenceMs) ? `${inferenceMs.toFixed(1)} ms` : 'unavailable'}`,
       'Prediction overlay is generated from the same frame as the original image.',
       'Visual indication only; chemical confirmation has not been performed.',
-    ].join('\\n')
+    ].join('\n')
 
     setTelegramAlert({ status: 'sending', message: 'Preparing original and predicted images for Telegram…' })
 
