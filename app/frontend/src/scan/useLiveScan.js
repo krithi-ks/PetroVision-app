@@ -7,7 +7,22 @@ import { HUD_PALETTE } from './palette'
 const CAPTURE_WIDTH = 480          // frames are downscaled before upload (the models resize anyway)
 const JPEG_QUALITY = 0.72
 const MIN_FRAME_GAP_MS = 40
-const CONFIRM_FRAMES = 2           // consecutive frames with detections before DETECTED
+const CONFIRM_FRAMES = 3           // require a longer persistent detection before raising an incident
+const MIN_ALERT_COVERAGE_PERCENT = Number(import.meta.env.VITE_ALERT_MIN_COVERAGE_PERCENT ?? 0.35)
+const MIN_ALERT_CONFIDENCE = Number(import.meta.env.VITE_ALERT_MIN_CONFIDENCE ?? 0.65)
+
+function isAlertCandidate(result) {
+  const measurements = result?.measurements
+  const coverage = Number(measurements?.coverage_percent ?? 0)
+  if (!measurements?.has_petroleum_like_region || coverage < MIN_ALERT_COVERAGE_PERCENT) return false
+
+  // Instance-segmentation models provide confidence. Semantic models do not, so they
+  // use the region-size gate and still require persistence across multiple frames.
+  const instances = Array.isArray(result.instances) ? result.instances : []
+  const scored = instances.filter((item) => Number.isFinite(item.confidence))
+  if (scored.length > 0 && !scored.some((item) => item.confidence >= MIN_ALERT_CONFIDENCE)) return false
+  return result.instance_count > 0
+}
 const CLEAR_FRAMES = 3             // consecutive empty frames before NO DETECTION
 const DETECTION_SOUND_COOLDOWN_MS = 3000
 const LATENCY_HISTORY = 48
@@ -237,7 +252,8 @@ export function useLiveScan({ modelId }) {
 
         // ---- detection state machine (debounced; sound only on a meaningful change) ----
         const s = streaks.current
-        if (res.instance_count > 0) { s.pos += 1; s.neg = 0 } else { s.neg += 1; s.pos = 0 }
+        const alertCandidate = isAlertCandidate(res)
+        if (alertCandidate) { s.pos += 1; s.neg = 0 } else { s.neg += 1; s.pos = 0 }
         let next = s.state
         if (s.state !== 'detected' && s.pos >= CONFIRM_FRAMES) next = 'detected'
         else if (s.state === 'detected' && s.neg >= CLEAR_FRAMES) next = 'none'
