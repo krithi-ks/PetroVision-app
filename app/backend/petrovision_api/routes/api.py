@@ -10,7 +10,6 @@ import sys
 import time
 import os
 import httpx
-import base64
 
 from PIL import Image
 
@@ -83,25 +82,6 @@ async def _read_upload(file: UploadFile, limit: int) -> bytes:
     if len(data) > limit:
         raise PayloadTooLargeError(f"File is larger than the {limit // 1_048_576} MB upload limit.")
     return data
-
-
-def _data_url_to_bytes(value: str) -> bytes:
-    """Decode data:image/...;base64,... returned by the inference pipeline."""
-    if not value or "," not in value:
-        raise ValueError("Missing or malformed prediction image.")
-    return base64.b64decode(value.split(",", 1)[1], validate=True)
-
-
-def _overlay_jpeg(original: Image.Image, overlay_data_url: str) -> bytes:
-    """Composite the model's transparent mask overlay on top of the original image."""
-    overlay = Image.open(io.BytesIO(_data_url_to_bytes(overlay_data_url))).convert("RGBA")
-    base = original.convert("RGBA")
-    if overlay.size != base.size:
-        overlay = overlay.resize(base.size, Image.Resampling.NEAREST)
-    result = Image.alpha_composite(base, overlay).convert("RGB")
-    out = io.BytesIO()
-    result.save(out, format="JPEG", quality=90, optimize=True)
-    return out.getvalue()
 
 
 async def _send_telegram_photo(
