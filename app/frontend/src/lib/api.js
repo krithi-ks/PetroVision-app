@@ -61,9 +61,10 @@ export const api = {
       headers: { 'Content-Type': 'image/jpeg' },
       signal,
     }),
-      sendTelegramIncident: ({ image, incidentId, timestamp, modelId, summary }) => {
+  sendTelegramIncident: ({ image, predictedImage, incidentId, timestamp, modelId, summary }) => {
     const form = new FormData()
-    form.append('file', image, 'incident-evidence.jpg')
+    form.append('file', image, 'incident-original.jpg')
+    form.append('overlay_file', predictedImage, 'incident-predicted-overlay.jpg')
     form.append('incident_id', incidentId)
     form.append('timestamp', timestamp)
     form.append('model_id', modelId)
