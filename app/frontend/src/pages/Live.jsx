@@ -17,6 +17,34 @@ import { api } from '../lib/api'
 
 const LiveSurface3D = lazy(() => import('../scan/LiveSurface3D'))
 
+// Build the exact prediction evidence from the exact camera frame that triggered the alert.
+async function makePredictedEvidence(originalBlob, overlayDataUrl) {
+  if (!overlayDataUrl) throw new Error('The model response did not include a prediction mask overlay.')
+  const overlayResponse = await fetch(overlayDataUrl)
+  if (!overlayResponse.ok) throw new Error('Could not read the prediction mask overlay.')
+  const overlayBlob = await overlayResponse.blob()
+  const [source, overlay] = await Promise.all([
+    createImageBitmap(originalBlob),
+    createImageBitmap(overlayBlob),
+  ])
+  try {
+    const canvas = document.createElement('canvas')
+    canvas.width = source.width
+    canvas.height = source.height
+    const ctx = canvas.getContext('2d', { alpha: false })
+    if (!ctx) throw new Error('Could not create a canvas for the prediction image.')
+    ctx.drawImage(source, 0, 0, canvas.width, canvas.height)
+    ctx.drawImage(overlay, 0, 0, canvas.width, canvas.height)
+    const blob = await new Promise((resolve, reject) => {
+      canvas.toBlob((value) => value ? resolve(value) : reject(new Error('Could not encode the prediction image.')), 'image/jpeg', 0.92)
+    })
+    return blob
+  } finally {
+    source.close()
+    overlay.close()
+  }
+}
+
 function webglAvailable() {
   try {
     const c = document.createElement('canvas')
@@ -46,7 +74,9 @@ const MODES = [['mask', 'Mask'], ['contour', 'Contour'], ['both', 'Both']]
 
 function pickDefaultModel(models) {
   const usable = models.filter((m) => m.availability.available)
-  return (usable.find((m) => m.id === 'yolo26') || usable.find((m) => m.task === 'instance') || usable[0])?.id || null
+  // The webcam pipeline is RGB; prefer the LADOS-trained YOLO11n-Seg checkpoint
+  // over the De Kerf/YOLO26 checkpoint for the default RGB-camera experiment.
+  return (usable.find((m) => m.id === 'yolo') || usable.find((m) => m.id === 'unet') || usable[0])?.id || null
 }
 
 function Ribbon({ status, model, result, stats }) {
@@ -165,58 +195,45 @@ export default function Live() {
   const groups = [['instance', 'Instance segmentation'], ['semantic', 'Semantic segmentation']]
 
 
- useEffect(() => {
-  if (!incident?.id || !incident.frameBlob || !incident.result) return
-  if (sentIncidentIds.current.has(incident.id)) return
+  useEffect(() => {
+    if (!incident?.id || !incident.frameBlob || !incident.result) return
+    if (sentIncidentIds.current.has(incident.id)) return
 
-  sentIncidentIds.current.add(incident.id)
+    sentIncidentIds.current.add(incident.id)
 
-  const result = incident.result
-  const coverage = result.measurements?.coverage_percent
-  const inferenceMs = result.timing?.inference_ms
+    const result = incident.result
+    const coverage = result.measurements?.coverage_percent
+    const inferenceMs = result.timing?.inference_ms
 
-  const summary = [
-    `Visual regions detected: ${result.instance_count}`,
-    `Image-space coverage: ${
-      Number.isFinite(coverage)
-        ? `${coverage.toFixed(2)}%`
-        : 'unavailable'
-    }`,
-    `Inference time: ${
-      Number.isFinite(inferenceMs)
-        ? `${inferenceMs.toFixed(1)} ms`
-        : 'unavailable'
-    }`,
-    'Visual indication only; chemical confirmation has not been performed.',
-  ].join('\n')
+    const summary = [
+      `Visual regions detected: ${result.instance_count}`,
+      `Image-space coverage: ${Number.isFinite(coverage) ? `${coverage.toFixed(2)}%` : 'unavailable'}`,
+      `Inference time: ${Number.isFinite(inferenceMs) ? `${inferenceMs.toFixed(1)} ms` : 'unavailable'}`,
+      'Prediction overlay is generated from the same frame as the original image.',
+      'Visual indication only; chemical confirmation has not been performed.',
+    ].join('\\n')
 
-  setTelegramAlert({
-    status: 'sending',
-    message: 'Sending incident evidence to Telegram…',
-  })
+    setTelegramAlert({ status: 'sending', message: 'Preparing original and predicted images for Telegram…' })
 
-  api.sendTelegramIncident({
-    image: incident.frameBlob,
-    incidentId: incident.id,
-    timestamp: incident.timestamp,
-    modelId: incident.modelId,
-    summary,
-  })
-    .then(() => {
-      setTelegramAlert({
-        status: 'sent',
-        message: `Telegram alert sent for incident ${incident.id}.`,
+    ;(async () => {
+      const predictedImage = await makePredictedEvidence(incident.frameBlob, result.mask?.overlay_png)
+      return api.sendTelegramIncident({
+        image: incident.frameBlob,
+        predictedImage,
+        incidentId: incident.id,
+        timestamp: incident.timestamp,
+        modelId: incident.modelId,
+        summary,
       })
-    })
-    .catch((err) => {
-      setTelegramAlert({
-        status: 'error',
-        message: `Telegram alert failed: ${err.message}`,
+    })()
+      .then(() => {
+        setTelegramAlert({ status: 'sent', message: `Telegram alert sent with original and predicted images for incident ${incident.id}.` })
       })
-
-      console.error('PetroVision Telegram alert failed:', err)
-    })
-}, [incident])
+      .catch((err) => {
+        setTelegramAlert({ status: 'error', message: `Telegram alert failed: ${err.message}` })
+        console.error('PetroVision Telegram alert failed:', err)
+      })
+  }, [incident])
 
 
   return (
