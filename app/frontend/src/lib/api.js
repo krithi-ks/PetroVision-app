@@ -55,7 +55,7 @@ export const api = {
     return request('/api/infer/image', { method: 'POST', body: form })
   },
   inferFrame: (blob, modelId, signal) =>
-    request(`/api/infer/frame?model_id=${encodeURIComponent(modelId)}`, {
+    request(`/api/infer/frame?model_id=${encodeURIComponent(modelId)}&include_overlay=true`, {
       method: 'POST',
       body: blob,
       headers: { 'Content-Type': 'image/jpeg' },
