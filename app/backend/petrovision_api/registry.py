@@ -150,9 +150,21 @@ def _short(path: Path, root: Path) -> str:
 
 def check_availability(spec: ModelSpec, settings: Settings) -> Availability:
     path = checkpoint_path(spec, settings)
-    missing = tuple(m for m in spec.requires if importlib.util.find_spec(m) is None)
-    if missing:
-        return Availability("dependency_missing", path, "Required component is not installed.", missing)
+    # Prefer the missing-checkpoint diagnosis when this environment has no weights;
+    # this keeps dependency/source checks from hiding the more immediate setup issue.
     if not path.is_file():
         return Availability("checkpoint_missing", path, "Model files are not installed.")
+
+    missing = tuple(m for m in spec.requires if importlib.util.find_spec(m) is None)
+    # The U-Net architecture is part of the training project, not a pip dependency.
+    # A checkpoint without its matching model definition cannot be loaded safely.
+    if spec.id == "unet" and not (settings.project_root / "src" / "vision" / "unet.py").is_file():
+        missing += ("src.vision.unet",)
+    if missing:
+        return Availability(
+            "dependency_missing",
+            path,
+            "A required model component is not available in this project environment.",
+            missing,
+        )
     return Availability("available", path, "Checkpoint found.")
