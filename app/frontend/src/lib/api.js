@@ -61,6 +61,8 @@ export const api = {
       headers: { 'Content-Type': 'image/jpeg' },
       signal,
     }),
+  telegramStatus: () => request('/api/incidents/telegram/status'),
+  testTelegram: () => request('/api/incidents/telegram/test', { method: 'POST' }),
   sendTelegramIncident: ({ image, predictedImage, incidentId, timestamp, modelId, summary }) => {
     const form = new FormData()
     form.append('file', image, 'incident-original.jpg')
