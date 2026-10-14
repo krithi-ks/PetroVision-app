@@ -155,6 +155,24 @@ async def _send_telegram_photo(
         ) from exc
         
 
+def _telegram_credentials() -> tuple[str, str]:
+    """Return usable Telegram credentials without exposing them to API responses."""
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+    placeholder_prefixes = ("replace_", "your_", "paste_", "put_")
+    if (
+        not token
+        or not chat_id
+        or token.lower().startswith(placeholder_prefixes)
+        or chat_id.lower().startswith(placeholder_prefixes)
+    ):
+        raise HTTPException(
+            status_code=503,
+            detail="Telegram is not configured. Set a real TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in app/backend/.env, then restart the backend.",
+        )
+    return token, chat_id
+
+
 async def _send_telegram_media_group(
     original: bytes,
     predicted: bytes,
@@ -162,13 +180,7 @@ async def _send_telegram_media_group(
     incident_id: str,
 ) -> dict:
     """Send the original and predicted overlay together as a Telegram photo album."""
-    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
-    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
-    if not token or not chat_id:
-        raise HTTPException(
-            status_code=503,
-            detail="Telegram is not configured. Check the backend environment variables.",
-        )
+    token, chat_id = _telegram_credentials()
 
     url = f"https://api.telegram.org/bot{token}/sendMediaGroup"
     media = [
@@ -459,6 +471,47 @@ async def infer_frame(
     for key in ("notes", "contours"):
         result.pop(key, None)
     return result
+
+@router.get("/incidents/telegram/status")
+def telegram_status():
+    """Expose only whether Telegram credentials are configured, never the values."""
+    try:
+        _telegram_credentials()
+    except HTTPException as exc:
+        return {"configured": False, "message": str(exc.detail)}
+    return {"configured": True, "message": "Telegram credentials are configured. Send a test to verify that the bot can reach the target chat."}
+
+
+@router.post("/incidents/telegram/test")
+async def telegram_test():
+    """Send an explicit test text so configuration can be checked without waiting for detection."""
+    token, chat_id = _telegram_credentials()
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.post(
+                url,
+                data={
+                    "chat_id": chat_id,
+                    "text": "✅ PetroVision Telegram test: this chat can receive notifications.",
+                },
+            )
+        payload = response.json()
+        if response.is_error or not payload.get("ok"):
+            description = payload.get("description", "Telegram rejected the test message.")
+            log.error("Telegram test failed (HTTP %s): %s", response.status_code, description)
+            raise HTTPException(
+                status_code=502,
+                detail=f"Telegram test failed: {description}. Check that you started the bot with /start and that TELEGRAM_CHAT_ID is correct.",
+            )
+        return {"sent": True, "message": "Telegram test message sent."}
+    except httpx.HTTPError as exc:
+        log.exception("Telegram test network request failed: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=502,
+            detail="Could not reach Telegram while sending the test message. Check the backend network connection.",
+        ) from exc
+
 
 @router.post("/incidents/telegram")
 async def send_telegram_incident(
