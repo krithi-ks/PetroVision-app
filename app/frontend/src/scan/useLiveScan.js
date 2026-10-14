@@ -298,6 +298,15 @@ if (next !== s.state) {
         setResult(built)
         setStats({ fps, frames: framesDone.current, latencies: [...latencies.current] })
         setInFlight(false)
+
+        // A confirmed incident is a terminal state for this scan. Preserve the
+        // confirmed frame/result first, then stop the loop without cancelling
+        // the separate Telegram notification effect.
+        if (confirmed) {
+          stopScan({ silent: true })
+          setEnded(true)
+          break
+        }
       } catch (err) {
         if (err?.name === 'AbortError' || !state.active || state.id !== runId) break
         fail(err)
@@ -306,7 +315,7 @@ if (next !== s.state) {
       const spent = performance.now() - t0
       if (spent < MIN_FRAME_GAP_MS) await new Promise((r) => setTimeout(r, MIN_FRAME_GAP_MS - spent))
     }
-  }, [fail])
+  }, [fail, stopScan])
 
   const startScan = useCallback(async () => {
     if (camera !== 'on' || !modelId || loop.current.active) return
@@ -349,6 +358,7 @@ if (next !== s.state) {
   // ------------------------------------------------------------------ derived status
   const status = useMemo(() => {
     if (error) return 'ERROR'
+    if (detection === 'detected' && result) return 'DETECTED'
     if (scanning) {
       if (loadingModel) return 'PROCESSING'
       if (detection === 'detected') return 'DETECTED'
