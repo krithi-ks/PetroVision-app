@@ -5,9 +5,9 @@ def test_telegram_endpoint_requires_and_sends_both_images(client, real_png, monk
 
     seen = {}
 
-    async def fake_send_media_group(original, overlay, caption, incident_id):
+    async def fake_send_media_group(original, predicted, caption, incident_id):
         seen["original"] = original
-        seen["overlay"] = overlay
+        seen["overlay"] = predicted
         seen["caption"] = caption
         seen["incident_id"] = incident_id
         return {"sent": True, "message_ids": [101, 102]}
