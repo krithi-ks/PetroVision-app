@@ -7,14 +7,15 @@ Every predictor exposes::
                                                petroleum-like region (Oil + Emulsion + Sheen)
 
 They reuse the project's existing code where it exists (``src.vision.unet.UNet``) and rebuild
-the other architectures exactly like the training notebooks did. Preprocessing and decision
-rules (sigmoid >= 0.5, Mask2Former class id 1, YOLO imgsz=640 / conf=0.25 / retina masks) are the
-ones used in the evaluation notebooks. Nothing here is trained or fitted at runtime.
+the other architectures exactly like the training notebooks did. Preprocessing and decision rules (sigmoid >= 0.5, Mask2Former class id 1, YOLO retina masks) follow
+the evaluation pipeline. The live YOLO confidence threshold is configurable to reduce weak detections.
+Nothing here is trained or fitted at runtime.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import threading
 import time
@@ -283,7 +284,16 @@ class Mask2FormerPredictor(BasePredictor):
 
 class YoloPredictor(BasePredictor):
     DEFAULT_IMGSZ = 640
-    CONF = 0.25
+
+    @staticmethod
+    def _confidence_threshold() -> float:
+        try:
+            value = float(os.environ.get("PETROVISION_YOLO_CONFIDENCE", "0.45"))
+        except ValueError:
+            value = 0.45
+        return min(0.95, max(0.05, value))
+
+    CONF = _confidence_threshold.__func__()
 
     def _load(self):
         from ultralytics import YOLO
