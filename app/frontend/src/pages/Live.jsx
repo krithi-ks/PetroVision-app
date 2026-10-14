@@ -109,10 +109,14 @@ export default function Live() {
   const [selected, setSelected] = useState(1)
   const [save, setSave] = useState({ status: 'idle' })
   const [telegramAlert, setTelegramAlert] = useState({
-  status: 'idle',
-  message: '',
+    status: 'idle',
+    message: '',
+    incidentId: null,
   })
+  const [telegramTestBusy, setTelegramTestBusy] = useState(false)
+  const [telegramRetryKey, setTelegramRetryKey] = useState(0)
   const sentIncidentIds = useRef(new Set())
+  const sendingIncidentIds = useRef(new Set())
   const [gl] = useState(webglAvailable)
   const sfx = useMemo(uiSoundHandlers, [])
 
@@ -195,12 +199,25 @@ export default function Live() {
   const groups = [['instance', 'Instance segmentation'], ['semantic', 'Semantic segmentation']]
 
 
+  const testTelegram = async () => {
+    setTelegramTestBusy(true)
+    setTelegramAlert({ status: 'sending', message: 'Sending a Telegram test message…', incidentId: null })
+    try {
+      const response = await api.testTelegram()
+      setTelegramAlert({ status: 'sent', message: response.message || 'Telegram test message sent.', incidentId: null })
+    } catch (err) {
+      setTelegramAlert({ status: 'error', message: err.message, incidentId: null })
+      console.error('PetroVision Telegram test failed:', err)
+    } finally {
+      setTelegramTestBusy(false)
+    }
+  }
+
   useEffect(() => {
     if (!incident?.id || !incident.frameBlob || !incident.result) return
-    if (sentIncidentIds.current.has(incident.id)) return
+    if (sentIncidentIds.current.has(incident.id) || sendingIncidentIds.current.has(incident.id)) return
 
-    sentIncidentIds.current.add(incident.id)
-
+    sendingIncidentIds.current.add(incident.id)
     const result = incident.result
     const coverage = result.measurements?.coverage_percent
     const inferenceMs = result.timing?.inference_ms
@@ -213,7 +230,11 @@ export default function Live() {
       'Visual indication only; chemical confirmation has not been performed.',
     ].join('\n')
 
-    setTelegramAlert({ status: 'sending', message: 'Preparing original and predicted images for Telegram…' })
+    setTelegramAlert({
+      status: 'sending',
+      message: 'Preparing original and predicted images for Telegram…',
+      incidentId: incident.id,
+    })
 
     ;(async () => {
       const predictedImage = await makePredictedEvidence(incident.frameBlob, result.mask?.overlay_png)
@@ -227,13 +248,25 @@ export default function Live() {
       })
     })()
       .then(() => {
-        setTelegramAlert({ status: 'sent', message: `Telegram alert sent with original and predicted images for incident ${incident.id}.` })
+        sentIncidentIds.current.add(incident.id)
+        setTelegramAlert({
+          status: 'sent',
+          message: `Telegram alert sent with original and predicted images for incident ${incident.id}.`,
+          incidentId: incident.id,
+        })
       })
       .catch((err) => {
-        setTelegramAlert({ status: 'error', message: `Telegram alert failed: ${err.message}` })
+        setTelegramAlert({
+          status: 'error',
+          message: `Telegram alert failed: ${err.message}`,
+          incidentId: incident.id,
+        })
         console.error('PetroVision Telegram alert failed:', err)
       })
-  }, [incident])
+      .finally(() => {
+        sendingIncidentIds.current.delete(incident.id)
+      })
+  }, [incident, telegramRetryKey])
 
 
   return (
@@ -295,6 +328,26 @@ export default function Live() {
             })}
           </select>
         </label>
+        <button
+          type="button"
+          className="btn-ghost"
+          onClick={testTelegram}
+          disabled={telegramTestBusy}
+          title="Send a test message to verify Telegram bot/chat configuration"
+        >
+          {telegramTestBusy ? <Spinner size={14} /> : null}
+          {telegramTestBusy ? 'Testing Telegram…' : 'Test Telegram'}
+        </button>
+        {telegramAlert.status === 'error' && telegramAlert.incidentId && (
+          <button
+            type="button"
+            className="btn-ghost"
+            onClick={() => setTelegramRetryKey((key) => key + 1)}
+            disabled={telegramAlert.status === 'sending'}
+          >
+            Retry incident alert
+          </button>
+        )}
         <div className="flex items-center gap-2">
           <span className="label hidden md:inline">Display</span>
           <div className="seg" role="group" aria-label="Visualization mode">{MODES.map(([k, l]) => <button key={k} type="button" aria-pressed={mode === k} onClick={() => setMode(k)}>{l}</button>)}</div>
@@ -315,24 +368,18 @@ export default function Live() {
 
 
       {telegramAlert.status !== 'idle' && (
-  <div
-    className="border-b border-line bg-surface px-4 py-2 sm:px-6"
-    role="status"
-    aria-live="polite"
-  >
-    <p
-      className={`text-sm ${
-        telegramAlert.status === 'error'
-          ? 'text-red-600'
-          : telegramAlert.status === 'sent'
-            ? 'text-emerald-700'
-            : 'text-ink-muted'
-      }`}
-    >
-      {telegramAlert.message}
-    </p>
-  </div>
-)}
+        <div className="border-b border-line bg-surface px-4 py-2 sm:px-6" role="status" aria-live="polite">
+          <p className={`text-sm ${
+            telegramAlert.status === 'error'
+              ? 'text-red-600'
+              : telegramAlert.status === 'sent'
+                ? 'text-emerald-700'
+                : 'text-ink-muted'
+          }`}>
+            {telegramAlert.message}
+          </p>
+        </div>
+      )}
 
       {/* ------------------------------------------------------------ the scanning viewport */}
       <div className="bg-surface-2">
