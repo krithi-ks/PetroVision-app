@@ -7,10 +7,30 @@ import { HUD_PALETTE } from './palette'
 const CAPTURE_WIDTH = 480          // frames are downscaled before upload (the models resize anyway)
 const JPEG_QUALITY = 0.72
 const MIN_FRAME_GAP_MS = 40
-const CONFIRM_FRAMES = 2           // consecutive frames with detections before DETECTED
+const CONFIRM_FRAMES = 5           // require a stable prediction before raising an incident
 const CLEAR_FRAMES = 3             // consecutive empty frames before NO DETECTION
+const MIN_ALERT_COVERAGE_PERCENT = 0.1
+const MIN_ALERT_CONFIDENCE = 0.65
+const MIN_SEMANTIC_COVERAGE_PERCENT = 0.5
+const SPREAD_CONFIRM_FRAMES = 5
+const SPREAD_RELATIVE_INCREASE = 1.3
+const SPREAD_MIN_COVERAGE_INCREASE = 0.5
 const DETECTION_SOUND_COOLDOWN_MS = 3000
 const LATENCY_HISTORY = 48
+
+export function isAlertCandidate(result) {
+  const coverage = result.measurements?.coverage_percent
+  if (!Number.isFinite(coverage) || coverage < MIN_ALERT_COVERAGE_PERCENT || !result.instances?.length) return false
+
+  const confidences = result.instances.map((instance) => instance.confidence).filter(Number.isFinite)
+  if (confidences.length) return Math.max(...confidences) >= MIN_ALERT_CONFIDENCE
+  return coverage >= MIN_SEMANTIC_COVERAGE_PERCENT
+}
+
+export function isSpreadingCoverage(currentCoverage, previousCoverage) {
+  return currentCoverage >= previousCoverage * SPREAD_RELATIVE_INCREASE
+    && currentCoverage - previousCoverage >= SPREAD_MIN_COVERAGE_INCREASE
+}
 
 export function cameraErrorMessage(err) {
   switch (err?.name) {
@@ -37,11 +57,12 @@ export function useLiveScan({ modelId }) {
   const stream = useRef(null)
   const loop = useRef({ active: false, abort: null, id: 0 })
   const caps = useRef(document.createElement('canvas'))
-  const streaks = useRef({ pos: 0, neg: 0, state: 'unknown', lastSound: 0 })
+  const streaks = useRef({ pos: 0, neg: 0, state: 'unknown', lastSound: 0, incidentId: null, lastAlertCoverage: 0, spreadPos: 0, spreadSequence: 0 })
   const times = useRef([])
   const latencies = useRef([])
   const framesDone = useRef(0)
   const lastBlob = useRef(null)
+  const resultBlob = useRef(null)
 
   const [camera, setCamera] = useState('off')            // off | starting | on
   const [scanning, setScanning] = useState(false)
@@ -58,6 +79,7 @@ export function useLiveScan({ modelId }) {
   const [error, setError] = useState(null)
   const [revealKey, setRevealKey] = useState(0)
   const [ended, setEnded] = useState(false)               // scan stopped with a result on screen -> COMPLETE
+  const [stoppedFrame, setStoppedFrame] = useState(null)
 
   const [incident, setIncident] = useState(null)
 
@@ -142,6 +164,7 @@ export function useLiveScan({ modelId }) {
       setFrame({ w: v.videoWidth, h: v.videoHeight })
       setCamera('on')
       setEnded(false)
+      setStoppedFrame(null)
       await loadCameras()
       audio.play('camera_start')
       if (modelId) api.loadModel(modelId).catch(() => {})       // warm the model while the user frames the shot
@@ -181,10 +204,16 @@ export function useLiveScan({ modelId }) {
     setInFlight(false)
     setLoadingModel(false)
     if (wasActive && !silent && framesDone.current > 0) {
+      const frameToKeep = resultBlob.current || lastBlob.current
+      setStoppedFrame(frameToKeep ? URL.createObjectURL(frameToKeep) : null)
       setEnded(true)
       audio.play('complete')
     }
   }, [])
+
+  useEffect(() => () => {
+    if (stoppedFrame) URL.revokeObjectURL(stoppedFrame)
+  }, [stoppedFrame])
 
   const stopCamera = useCallback(() => {
     const wasOn = !!stream.current
@@ -194,6 +223,7 @@ export function useLiveScan({ modelId }) {
     if (videoRef.current) videoRef.current.srcObject = null
     setCamera('off')
     setEnded(false)
+    setStoppedFrame(null)
     setResult(null)
     setDetection('unknown')
     setStats({ fps: null, frames: 0, latencies: [] })
@@ -231,44 +261,72 @@ export function useLiveScan({ modelId }) {
         const built = {
           ...res,
           fillCanvas: buildFillCanvas(lab, HUD_PALETTE, 0.3),
-          grid: buildSurfaceGrid(lab, 96),
+          grid: buildSurfaceGrid(lab, 160),
           receivedAt: performance.now(),
         }
 
         // ---- detection state machine (debounced; sound only on a meaningful change) ----
         const s = streaks.current
-        if (res.instance_count > 0) { s.pos += 1; s.neg = 0 } else { s.neg += 1; s.pos = 0 }
+        const qualifies = isAlertCandidate(res)
+        const coverage = res.measurements.coverage_percent
+        if (qualifies) { s.pos += 1; s.neg = 0 } else { s.neg += 1; s.pos = 0 }
         let next = s.state
         if (s.state !== 'detected' && s.pos >= CONFIRM_FRAMES) next = 'detected'
         else if (s.state === 'detected' && s.neg >= CLEAR_FRAMES) next = 'none'
         else if (s.state === 'unknown' && s.neg >= CLEAR_FRAMES) next = 'none'
-        let confirmed = false
+        if (next !== s.state) {
+          s.state = next
+          setDetection(next)
 
-if (next !== s.state) {
-  s.state = next
-  setDetection(next)
+          if (next === 'detected') {
+            setRevealKey((k) => k + 1)
+            const now = performance.now()
+            if (now - s.lastSound > DETECTION_SOUND_COOLDOWN_MS) {
+              audio.play('detection')
+              s.lastSound = now
+            }
 
-    if (next === 'detected') {
-      confirmed = true
-      setRevealKey((k) => k + 1)
+            s.incidentId = `PV-${Date.now()}`
+            s.lastAlertCoverage = coverage
+            s.spreadPos = 0
+            s.spreadSequence = 0
+            setIncident({
+              id: s.incidentId,
+              alertId: `${s.incidentId}-detected`,
+              type: 'detected',
+              timestamp: new Date().toISOString(),
+              modelId: id,
+              frameBlob: blob,
+              result: built,
+            })
+          } else if (next === 'none') {
+            s.incidentId = null
+            s.lastAlertCoverage = 0
+            s.spreadPos = 0
+          }
+        }
 
-      const now = performance.now()
-
-      if (now - s.lastSound > DETECTION_SOUND_COOLDOWN_MS) {
-        audio.play('detection')
-        s.lastSound = now
-      }
-
-      // Preserve the original frame and the prediction produced from it.
-      setIncident({
-        id: `PV-${Date.now()}`,
-        timestamp: new Date().toISOString(),
-        modelId: id,
-        frameBlob: blob,
-        result: built,
-      })
-    }
-  }
+        if (s.state === 'detected' && qualifies && isSpreadingCoverage(coverage, s.lastAlertCoverage)) {
+          s.spreadPos += 1
+          if (s.spreadPos >= SPREAD_CONFIRM_FRAMES) {
+            s.spreadSequence += 1
+            const previousCoverage = s.lastAlertCoverage
+            s.lastAlertCoverage = coverage
+            s.spreadPos = 0
+            setIncident({
+              id: s.incidentId,
+              alertId: `${s.incidentId}-spreading-${s.spreadSequence}`,
+              type: 'spreading',
+              previousCoverage,
+              timestamp: new Date().toISOString(),
+              modelId: id,
+              frameBlob: blob,
+              result: built,
+            })
+          }
+        } else {
+          s.spreadPos = 0
+        }
 
         // ---- real throughput / latency ----
         const now = performance.now()
@@ -280,6 +338,7 @@ if (next !== s.state) {
         framesDone.current += 1
 
         setResult(built)
+        resultBlob.current = blob
         setStats({ fps, frames: framesDone.current, latencies: [...latencies.current] })
         setInFlight(false)
       } catch (err) {
@@ -296,14 +355,16 @@ if (next !== s.state) {
     if (camera !== 'on' || !modelId || loop.current.active) return
     setError(null)
     setEnded(false)
+    setStoppedFrame(null)
     await audio.unlock()
     const runId = loop.current.id + 1
     loop.current = { active: true, abort: null, id: runId }
-    streaks.current = { pos: 0, neg: 0, state: 'unknown', lastSound: streaks.current.lastSound }
+    streaks.current = { pos: 0, neg: 0, state: 'unknown', lastSound: streaks.current.lastSound, incidentId: null, lastAlertCoverage: 0, spreadPos: 0, spreadSequence: 0 }
     times.current = []
     latencies.current = []
     framesDone.current = 0
     setResult(null)
+    resultBlob.current = null
     setDetection('unknown')
     setIncident(null)
 
@@ -354,6 +415,8 @@ if (next !== s.state) {
   detection,
   result,
   frame,
+  ended,
+  stoppedFrame,
   setFrame,
   stats,
   error,
@@ -361,6 +424,7 @@ if (next !== s.state) {
   loadingModel,
   dismissError,
   lastBlob,
+  resultBlob,
 
   cameras,
   selectedCamera,

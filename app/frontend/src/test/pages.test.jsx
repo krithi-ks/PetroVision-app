@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { useEffect, useState } from 'react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { AppProvider } from '../context/AppContext'
+import { AppProvider, useApp } from '../context/AppContext'
+import { ThemeProvider } from '../context/ThemeContext'
 import { audio } from '../audio/AudioManager'
 import Analyze from '../pages/Analyze'
 import Results from '../pages/Results'
@@ -88,7 +90,15 @@ function mockFetch({ history = [], latest = null, overrides = {} } = {}) {
   }))
 }
 
-const wrap = (ui) => render(<MemoryRouter><AppProvider>{ui}</AppProvider></MemoryRouter>)
+const wrap = (ui) => render(<MemoryRouter><ThemeProvider><AppProvider>{ui}</AppProvider></ThemeProvider></MemoryRouter>)
+function SeedCurrent({ analysis }) {
+  const { setCurrent } = useApp()
+  useEffect(() => { setCurrent(analysis) }, [analysis, setCurrent])
+  return null
+}
+const wrapWithAnalysis = (ui, analysis) => render(
+  <MemoryRouter><ThemeProvider><AppProvider><SeedCurrent analysis={analysis} />{ui}</AppProvider></ThemeProvider></MemoryRouter>,
+)
 
 beforeEach(() => {
   URL.createObjectURL = vi.fn(() => 'blob:fake')
@@ -105,6 +115,33 @@ describe('Analyze workspace', () => {
     expect(document.body.textContent).not.toMatch(/checkpoint|\.pt\b|models\/|PyTorch|Python|API online/i)
     expect(screen.getByRole('button', { name: /Run analysis/ }).disabled).toBe(true)        // no image yet
     expect(screen.getByText('Drop an image to analyze')).toBeTruthy()
+  })
+
+  it('keeps the newly selected original visible while a rerun is in progress', async () => {
+    let finishInference
+    mockFetch({
+      latest: ANALYSIS,
+      overrides: {
+        '/api/infer/image': () => new Promise((resolve) => { finishInference = resolve }),
+      },
+    })
+    wrapWithAnalysis(<Analyze />, ANALYSIS)
+    await screen.findByText('Instance 01')
+    fireEvent.change(screen.getByTestId('file-input'), {
+      target: { files: [new File(['new image'], 'new-coast.png', { type: 'image/png' })] },
+    })
+    fireEvent.click(await screen.findByRole('button', { name: /Run analysis/ }))
+    expect(await screen.findByAltText('Selected for analysis')).toBeTruthy()
+    expect(screen.queryByRole('img', { name: 'Analysed image with segmentation' })).toBeNull()
+    await act(async () => { finishInference(respond({ error: { code: 'invalid_image', message: 'Image could not be read.' } }, 400)) })
+    expect(await screen.findByText('Analysis could not be completed')).toBeTruthy()
+  })
+
+  it('starts with an upload prompt instead of restoring the most recent saved image', async () => {
+    mockFetch({ latest: ANALYSIS })
+    wrap(<Analyze />)
+    expect(await screen.findByText('Drop an image to analyze')).toBeTruthy()
+    expect(screen.queryByRole('img', { name: 'Analysed image with segmentation' })).toBeNull()
   })
 
   it('runs inference on an upload and shows the saved record: instances, confidence, area, no research metrics', async () => {
@@ -180,9 +217,73 @@ describe('Analyze workspace', () => {
     expect(infer.mock.calls.map(([options]) => options.body.get('model_id'))).toEqual(['unet', 'deeplab'])
   })
 
+  it('can run the same image and model again after a successful analysis', async () => {
+    const infer = vi.fn(async () => respond({ analysis_id: ANALYSIS.id }))
+    mockFetch({ overrides: { '/api/infer/image': infer } })
+    wrap(<Analyze />)
+    await screen.findByText('U-Net')
+    fireEvent.change(screen.getByTestId('file-input'), { target: { files: [new File(['x'], 'a.png', { type: 'image/png' })] } })
+    const runButton = screen.getByRole('button', { name: /Run analysis/ })
+
+    fireEvent.click(runButton)
+    await waitFor(() => expect(infer).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(runButton.disabled).toBe(false))
+    fireEvent.click(runButton)
+    await waitFor(() => expect(infer).toHaveBeenCalledTimes(2))
+  })
+
+  it('keeps the selected image ready for analysis after switching away and back', async () => {
+    const infer = vi.fn(async () => respond({ analysis_id: ANALYSIS.id }))
+    mockFetch({ overrides: { '/api/infer/image': infer } })
+    function TabSwitcher() {
+      const [showAnalyze, setShowAnalyze] = useState(true)
+      return (
+        <>
+          <button type="button" onClick={() => setShowAnalyze((shown) => !shown)}>Switch tab</button>
+          {showAnalyze ? <Analyze /> : <div>Another tab</div>}
+        </>
+      )
+    }
+    wrap(<TabSwitcher />)
+    await screen.findByText('U-Net')
+    fireEvent.change(screen.getByTestId('file-input'), { target: { files: [new File(['x'], 'a.png', { type: 'image/png' })] } })
+    fireEvent.click(screen.getByRole('button', { name: 'Switch tab' }))
+    expect(screen.getByText('Another tab')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Switch tab' }))
+    const runButton = await screen.findByRole('button', { name: /Run analysis/ })
+    expect(runButton.disabled).toBe(false)
+    fireEvent.click(runButton)
+    await waitFor(() => expect(infer).toHaveBeenCalledOnce())
+  })
+
+  it('checks bounding boxes by default', async () => {
+    mockFetch()
+    wrap(<Analyze />)
+    await screen.findByText('U-Net')
+    expect(screen.getByRole('checkbox', { name: 'Bounding boxes' }).checked).toBe(true)
+  })
+
+  it('defaults to YOLO11 when it is available', async () => {
+    const yolo11 = {
+      id: 'yolo', label: 'YOLO11n-Seg', task: 'instance', dataset: 'LADOS',
+      availability: { status: 'available', available: true, message: 'ok' }, loaded: false,
+    }
+    const models = [
+      ...MODELS.models.map((model) => model.id === 'yolo26'
+        ? { ...model, availability: { status: 'available', available: true, message: 'ok' } }
+        : model),
+      yolo11,
+    ]
+    mockFetch({ overrides: { '/api/models': async () => respond({ models }) } })
+    wrap(<Analyze />)
+
+    const model = await screen.findByRole('radio', { name: /YOLO11n-Seg/ })
+    expect(model.getAttribute('aria-checked')).toBe('true')
+  })
+
   it('lets the user hide an instance without touching any measurement', async () => {
     mockFetch({ history: [HISTORY_ITEM], latest: ANALYSIS })
-    wrap(<Analyze />)
+    wrapWithAnalysis(<Analyze />, ANALYSIS)
     await screen.findByText('Instance 01')
     const group = screen.getByRole('group', { name: 'instance 01' })
     const eye = group.querySelector('button[aria-pressed]:not([data-sfx])')
@@ -249,6 +350,8 @@ describe('Analytics dashboard', () => {
     expect(screen.getByText('Prediction overlay')).toBeTruthy()
     expect(screen.getByText('Region perimeter')).toBeTruthy()
     expect(screen.getByText('Inference speed')).toBeTruthy()
+    expect(screen.getByText('Source image').closest('div.grid').className).toContain('grid-cols-1')
+    expect(screen.getByText('Source image').parentElement.querySelector('img').className).toContain('min-h-[380px]')
     expect(screen.getAllByText('Perimeter').length).toBeGreaterThan(0)
   })
 })
@@ -267,6 +370,8 @@ describe('Overview', () => {
     wrap(<Dashboard />)
     await screen.findByText('Latest analysis')
     await waitFor(() => expect(screen.getAllByText(/24\.68|20\.5/).length).toBeGreaterThan(0), { timeout: 3000 })
+    expect(screen.getByText('Source image').closest('div.grid').className).toContain('md:grid-cols-3')
+    expect(screen.getByText('Source image').closest('div.grid').className).not.toContain('grid-cols-1')
   })
 
   it('uses a searched location for the marine ecosystem and requests sea conditions', async () => {
@@ -292,9 +397,37 @@ describe('Overview', () => {
     expect(screen.getByText(/20\.1600° S/)).toBeTruthy()
     expect(screen.getByText(/57\.5000° E/)).toBeTruthy()
   })
+
+  it('shows feedback when a location search returns no matches', async () => {
+    mockFetch({ overrides: {
+      '/api/geocode?query=Nowhere': async () => respond({ results: [] }),
+    } })
+    wrap(<Dashboard />)
+
+    fireEvent.change(screen.getByLabelText('Search a coastal or marine location'), { target: { value: 'Nowhere' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+
+    expect((await screen.findByRole('alert')).textContent).toContain('No matching locations found.')
+  })
 })
 
 describe('Live Scan page', () => {
+  it('defaults to YOLO11 when it is available', async () => {
+    const yolo11 = {
+      id: 'yolo', label: 'YOLO11n-Seg', task: 'instance', dataset: 'LADOS',
+      availability: { status: 'available', available: true, message: 'ok' }, loaded: false,
+    }
+    const models = [
+      ...MODELS.models.map((model) => model.id === 'yolo26'
+        ? { ...model, availability: { status: 'available', available: true, message: 'ok' } }
+        : model),
+      yolo11,
+    ]
+    mockFetch({ overrides: { '/api/models': async () => respond({ models }) } })
+    wrap(<Live />)
+    await waitFor(() => expect(screen.getByRole('combobox').value).toBe('yolo'))
+  })
+
   it('explains a denied camera permission and does not claim to be running', async () => {
     mockFetch({ '/api/models/unet/load': async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ runtime: { device: 'cpu' } }) }) })
     const denied = Object.assign(new Error('denied'), { name: 'NotAllowedError' })
@@ -353,7 +486,9 @@ describe('3D page', () => {
     mockFetch({ history: [HISTORY_ITEM], latest: ANALYSIS })
     wrap(<Visualization3D />)
     await screen.findByText('Saved analyses')
+    fireEvent.click(screen.getByRole('button', { name: /U-Net/ }))
     expect(await screen.findByText('Instance 01')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Reset camera' })).toBeTruthy()
+    expect(screen.getByRole('switch', { name: 'Auto-rotate' }).getAttribute('aria-checked')).toBe('true')
   })
 })

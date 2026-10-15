@@ -61,6 +61,12 @@ class Settings:
     bootstrap_admin_email: str
     bootstrap_admin_password: str
     auth_cookie_secure: bool
+    smtp_host: str
+    smtp_port: int
+    smtp_username: str
+    smtp_password: str
+    smtp_from_email: str
+    smtp_starttls: bool
     target_classes: dict            # model_id -> tuple of class names that count as 'petroleum-like' (None = all)
 
     @classmethod
@@ -108,4 +114,10 @@ class Settings:
             bootstrap_admin_email=os.environ.get("PETROVISION_ADMIN_EMAIL", "").strip(),
             bootstrap_admin_password=os.environ.get("PETROVISION_ADMIN_PASSWORD", ""),
             auth_cookie_secure=os.environ.get("PETROVISION_AUTH_COOKIE_SECURE", "false").lower() in {"1", "true", "yes"},
+            smtp_host=os.environ.get("PETROVISION_SMTP_HOST", "").strip(),
+            smtp_port=_int_env("PETROVISION_SMTP_PORT", 587),
+            smtp_username=os.environ.get("PETROVISION_SMTP_USERNAME", "").strip(),
+            smtp_password=os.environ.get("PETROVISION_SMTP_PASSWORD", ""),
+            smtp_from_email=os.environ.get("PETROVISION_SMTP_FROM_EMAIL", "").strip(),
+            smtp_starttls=os.environ.get("PETROVISION_SMTP_STARTTLS", "true").lower() in {"1", "true", "yes"},
         )

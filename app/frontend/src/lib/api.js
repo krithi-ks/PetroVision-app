@@ -72,6 +72,7 @@ export const api = {
     body: JSON.stringify({ active }),
   }),
   status: () => request('/api/status'),
+  telegramStatus: () => request('/api/integrations/telegram'),
   models: () => request('/api/models'),
   loadModel: (id) => request(`/api/models/${encodeURIComponent(id)}/load`, { method: 'POST' }),
   inferImage: (file, modelId) => {
@@ -87,12 +88,14 @@ export const api = {
       headers: { 'Content-Type': 'image/jpeg' },
       signal,
     }),
-      sendTelegramIncident: ({ image, incidentId, timestamp, modelId, summary }) => {
+      sendTelegramIncident: ({ image, predictedImage, incidentId, timestamp, modelId, alertType, summary }) => {
     const form = new FormData()
-    form.append('file', image, 'incident-evidence.jpg')
+    form.append('file', image, 'original-frame.jpg')
+    form.append('prediction', predictedImage, 'predicted-frame.jpg')
     form.append('incident_id', incidentId)
     form.append('timestamp', timestamp)
     form.append('model_id', modelId)
+    form.append('alert_type', alertType)
     form.append('summary', summary)
 
     return request('/api/incidents/telegram', {

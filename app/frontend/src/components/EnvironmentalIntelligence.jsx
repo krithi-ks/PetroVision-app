@@ -76,6 +76,7 @@ function EnvironmentalIntelligence({ latest }) {
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState(null)
   const requestId = useRef(0)
+  const searchRequestId = useRef(0)
 
   const location = locationKey === 'custom'
     ? customLocation
@@ -127,22 +128,32 @@ function EnvironmentalIntelligence({ latest }) {
 
   async function searchLocations() {
     const query = locationQuery.trim()
-    if (query.length < 2) return
+    if (query.length < 2) {
+      setLocationResults([])
+      setSearchError('Enter at least 2 characters to search.')
+      return
+    }
+    const currentSearch = ++searchRequestId.current
     setSearching(true)
     setSearchError(null)
+    setLocationResults([])
     try {
       const result = await api.geocode(query)
+      if (currentSearch !== searchRequestId.current) return
       setLocationResults(result.results || [])
       if (!result.results?.length) setSearchError('No matching locations found.')
     } catch (err) {
+      if (currentSearch !== searchRequestId.current) return
       setLocationResults([])
       setSearchError(err.message || 'Location search is unavailable.')
     } finally {
-      setSearching(false)
+      if (currentSearch === searchRequestId.current) setSearching(false)
     }
   }
 
   function chooseLocation(result) {
+    searchRequestId.current += 1
+    setSearching(false)
     setCustomLocation({
       label: [result.name, result.admin1, result.country].filter(Boolean).join(', '),
       latitude: Number(result.latitude),

@@ -12,7 +12,7 @@ import ModelPicker from '../components/ModelPicker'
 import { IconCube, IconScan } from '../components/icons'
 import { Badge, Button, Notice, Spinner } from '../components/ui'
 
-const DEFAULTS = { color: '#e5322d', opacity: 0.45, showBoxes: false, showLabels: true }
+const DEFAULTS = { color: '#e5322d', opacity: 0.45, showBoxes: true, showLabels: true }
 
 function Section({ title, children, right }) {
   return (
@@ -51,9 +51,7 @@ function InstanceCard({ inst, selected, hidden, onSelect, onToggle, index }) {
 }
 
 export default function Analyze() {
-  const { models, modelsLoading, modelsError, refreshModels, current, setCurrent, run, analyze, history, openAnalysis, removeAnalysis, play } = useApp()
-  const [file, setFile] = useState(null)
-  const [analyzedFile, setAnalyzedFile] = useState(null)
+  const { models, modelsLoading, modelsError, refreshModels, current, setCurrent, analysisFile: file, setAnalysisFile, analyzedFile, setAnalyzedFile, run, analyze, history, openAnalysis, removeAnalysis, play } = useApp()
   const [preview, setPreview] = useState(null)
   const [modelId, setModelId] = useState(null)
   const [mode, setMode] = useState('instances')
@@ -75,9 +73,19 @@ export default function Analyze() {
   const running = run.status === 'running'
 
   useEffect(() => {
+    if (!file) {
+      setPreview(null)
+      return undefined
+    }
+    const url = URL.createObjectURL(file)
+    setPreview(url)
+    return () => URL.revokeObjectURL(url)
+  }, [file])
+
+  useEffect(() => {
     if (modelId || !models.length) return
     const usable = models.filter((m) => m.availability.available)
-    setModelId((usable.find((m) => m.id === 'yolo26') || usable.find((m) => m.task === 'instance') || usable[0])?.id || null)
+    setModelId((usable.find((m) => m.id === 'yolo') || usable.find((m) => m.task === 'instance') || usable[0])?.id || null)
   }, [models, modelId])
 
   // opening a saved analysis restores the display settings it was last viewed with
@@ -86,7 +94,7 @@ export default function Analyze() {
     const v = view.viz
     setSelected(null); setHover(null)
     setHidden(new Set(v?.hidden_instances || []))
-    if (v) { setMode(v.mode || 'instances'); setColor(v.color || DEFAULTS.color); setOpacity(v.opacity ?? DEFAULTS.opacity); setShowBoxes(!!v.show_boxes); setShowLabels(v.show_labels !== false) }
+    if (v) {     setMode(v.mode || 'instances'); setColor(v.color || DEFAULTS.color); setOpacity(v.opacity ?? DEFAULTS.opacity); setShowBoxes(v.show_boxes ?? DEFAULTS.showBoxes); setShowLabels(v.show_labels !== false) }
     else setMode(view.instances.some((i) => i.kind === 'instance') ? 'instances' : 'overlay')
   }, [view?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -102,10 +110,11 @@ export default function Analyze() {
     if (!f) return
     if (!f.type.startsWith('image/')) return setFileError('Please choose an image file (JPEG, PNG, WebP or BMP).')
     if (f.size > 25 * 1024 * 1024) return setFileError('This file is larger than 25 MB.')
-    setFile(f)
-    setPreview((old) => { if (old) URL.revokeObjectURL(old); return URL.createObjectURL(f) })
+    setCurrent(null)
+    setAnalyzedFile(null)
+    setAnalysisFile(f)
     audio.play('ui_expand')
-  }, [])
+  }, [setCurrent, setAnalyzedFile, setAnalysisFile])
 
   const execute = async () => {
     if (!file || !modelId) return
@@ -118,7 +127,7 @@ export default function Analyze() {
   const toggleHidden = (idx) => setHidden((h) => { const n = new Set(h); n.has(idx) ? n.delete(idx) : n.add(idx); return n })
   const download = () => canvasRef.current?.toBlob((b) => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `petrovision_${view.id || 'analysis'}_${mode}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000) })
 
-  const showPreview = !!file && file !== analyzedFile && !running
+  const showPreview = !!file && (file !== analyzedFile || running)
   const noModels = !modelsLoading && models.length > 0 && !models.some((m) => m.availability.available)
   const m = view?.measurements
   const instCount = view?.instance_count ?? 0
@@ -141,7 +150,7 @@ export default function Analyze() {
             )}
           </div>
 
-          <div className="relative min-h-[420px] flex-1 bg-[#e9edf3]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, #cdd5e0 1px, transparent 0)', backgroundSize: '18px 18px' }}
+          <div className="analysis-workspace relative min-h-[420px] flex-1 bg-[#e9edf3]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, var(--line-strong) 1px, transparent 0)', backgroundSize: '18px 18px' }}
             onDragOver={(e) => { e.preventDefault(); setDrag(true) }} onDragLeave={() => setDrag(false)} onDrop={(e) => { e.preventDefault(); setDrag(false); pick(e.dataTransfer.files?.[0]) }}>
             {showPreview ? (
               <div className="flex h-full items-center justify-center p-6"><img src={preview} alt="Selected for analysis" className="max-h-full max-w-full border border-line-strong bg-surface object-contain shadow-sm" /></div>
@@ -207,6 +216,7 @@ export default function Analyze() {
             <Button className="mt-3 w-full" onClick={execute} disabled={!file || !modelId || running || noModels}>
               {running ? <><Spinner size={14} /> Analyzing</> : <><IconScan width={15} height={15} /> Run analysis</>}
             </Button>
+            {file && !running && <p className="mt-2 text-[11px] leading-relaxed text-ink-3">The selected image stays loaded after a result. Choose another available model above and run the analysis again to compare its output.</p>}
           </Section>
 
           <Section title="Display" right={<button type="button" onClick={resetDisplay} className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-accent hover:underline" disabled={!view}>Reset</button>}>
@@ -245,7 +255,7 @@ export default function Analyze() {
               <ul className="space-y-1.5">
                 {history.items.slice(0, 6).map((h) => (
                   <li key={h.id} className="group flex items-center gap-2">
-                    <button type="button" onClick={() => { setFile(null); openAnalysis(h.id) }} className={`flex min-w-0 flex-1 items-center gap-2.5 border p-1.5 text-left transition-colors ${view?.id === h.id ? 'border-ink bg-surface-2' : 'border-line hover:border-line-strong'}`}>
+                    <button type="button" onClick={() => { setAnalysisFile(null); setAnalyzedFile(null); openAnalysis(h.id) }} className={`flex min-w-0 flex-1 items-center gap-2.5 border p-1.5 text-left transition-colors ${view?.id === h.id ? 'border-ink bg-surface-2' : 'border-line hover:border-line-strong'}`}>
                       <img src={h.thumb_url} alt="" className="h-10 w-14 shrink-0 object-cover" loading="lazy" />
                       <span className="min-w-0"><span className="block truncate font-mono text-[11px] text-ink">{h.model.label}</span><span className="block truncate text-[11px] text-ink-3">{h.instance_count} · {fmtPct(h.coverage_percent, 1)} · {new Date(h.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></span>
                     </button>

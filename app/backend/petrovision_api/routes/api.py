@@ -7,6 +7,7 @@ import platform
 import sys
 import time
 import os
+import json
 import httpx
 
 
@@ -70,6 +71,7 @@ def _model_payload(request: Request, spec, rows_by_name: dict | None = None) -> 
             "status": availability.status,
             "available": availability.status == "available",
             "message": availability.message,
+            "missing_modules": list(availability.missing_modules),
         },
         "loaded": st.manager.is_loaded(spec.id),
         "research_result": research,   # saved experiment metrics (NOT live output)
@@ -82,12 +84,13 @@ async def _read_upload(file: UploadFile, limit: int) -> bytes:
         raise PayloadTooLargeError(f"File is larger than the {limit // 1_048_576} MB upload limit.")
     return data
 
-async def _send_telegram_photo(
-    photo: bytes,
-    filename: str,
+async def _send_telegram_media_group(
+    original: bytes,
+    prediction: bytes,
     caption: str,
+    details: str,
 ) -> dict:
-    """Send incident evidence to the configured Telegram chat."""
+    """Send original and prediction evidence to the configured Telegram chat."""
 
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
@@ -98,7 +101,11 @@ async def _send_telegram_photo(
             detail="Telegram is not configured. Check the backend environment variables.",
         )
 
-    url = f"https://api.telegram.org/bot{token}/sendPhoto"
+    url = f"https://api.telegram.org/bot{token}/sendMediaGroup"
+    media = [
+        {"type": "photo", "media": "attach://original", "caption": caption[:1024]},
+        {"type": "photo", "media": "attach://prediction", "caption": details[:1024]},
+    ]
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -106,12 +113,17 @@ async def _send_telegram_photo(
                 url,
                 data={
                     "chat_id": chat_id,
-                    "caption": caption[:1024],
+                    "media": json.dumps(media),
                 },
                 files={
-                    "photo": (
-                        filename,
-                        photo,
+                    "original": (
+                        "original-frame.jpg",
+                        original,
+                        "image/jpeg",
+                    ),
+                    "prediction": (
+                        "predicted-frame.jpg",
+                        prediction,
                         "image/jpeg",
                     ),
                 },
@@ -129,7 +141,21 @@ async def _send_telegram_photo(
                 detail="Telegram rejected the incident alert. Check the backend logs.",
             )
 
-        payload = response.json()
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            log.error("Telegram API returned an invalid JSON response.")
+            raise HTTPException(
+                status_code=502,
+                detail="Telegram returned an invalid alert response. Check the backend logs.",
+            ) from exc
+
+        if not isinstance(payload, dict):
+            log.error("Telegram API returned a non-object JSON response.")
+            raise HTTPException(
+                status_code=502,
+                detail="Telegram returned an unexpected alert response. Check the backend logs.",
+            )
 
         if not payload.get("ok"):
             log.error(
@@ -141,13 +167,21 @@ async def _send_telegram_photo(
                 detail="Telegram did not accept the incident alert. Check the backend logs.",
             )
 
+        messages = payload.get("result")
+        if not isinstance(messages, list) or not all(isinstance(item, dict) and "message_id" in item for item in messages):
+            log.error("Telegram API returned an unexpected media-group response.")
+            raise HTTPException(
+                status_code=502,
+                detail="Telegram returned an unexpected alert response. Check the backend logs.",
+            )
+
         return {
             "sent": True,
-            "message_id": payload["result"]["message_id"],
+            "message_ids": [item["message_id"] for item in messages],
         }
 
     except httpx.HTTPError as exc:
-        log.exception("Telegram network request failed: %s", type(exc).__name__)
+        log.error("Telegram network request failed (%s).", type(exc).__name__)
         raise HTTPException(
             status_code=502,
             detail="Could not reach Telegram. Check the backend logs.",
@@ -192,6 +226,15 @@ def status(request: Request):
     st = _state(request)
     available = [s.id for s in st.manager.all_specs() if st.manager.availability(s.id).status == "available"]
     return {"ready": bool(available), "models_available": len(available), "models_total": len(st.manager.all_specs())}
+
+
+@router.get("/integrations/telegram")
+def telegram_integration_status():
+    configured = bool(
+        os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+        and os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+    )
+    return {"configured": configured}
 
 
 # ------------------------------------------------------------------------------ environmental context
@@ -388,35 +431,50 @@ async def infer_frame(request: Request, model_id: str = Query(...)):
 @router.post("/incidents/telegram")
 async def send_telegram_incident(
     file: UploadFile = File(...),
+    prediction: UploadFile = File(...),
     incident_id: str = Form(...),
     timestamp: str = Form(...),
     model_id: str = Form(...),
+    alert_type: str = Form(...),
     summary: str = Form(...),
 ):
-    """Send an incident evidence image and summary to Telegram."""
+    """Send the original frame and predicted overlay as one Telegram album."""
 
-    photo = await _read_upload(file, 10 * 1024 * 1024)
+    original_photo = await _read_upload(file, 10 * 1024 * 1024)
+    predicted_photo = await _read_upload(prediction, 10 * 1024 * 1024)
 
-    if not photo:
+    if not original_photo or not predicted_photo:
         raise HTTPException(
             status_code=400,
-            detail="Incident evidence image is empty.",
+            detail="Original and prediction evidence images are required.",
         )
 
+    alert_title = "POSSIBLE SPREADING" if alert_type == "spreading" else "PERSISTENT VISUAL DETECTION"
     caption = (
-        "🚨 PETROVISION — VISUAL INCIDENT\n\n"
+        f"⚠️ PETROVISION — {alert_title}\n\n"
         f"Incident: {incident_id}\n"
         f"Time (UTC): {timestamp}\n"
-        f"Model: {model_id}\n\n"
-        f"Evidence summary: {summary}\n\n"
-        "Note: This is a computer-vision indication, "
-        "not chemical confirmation of petroleum contamination."
+        f"Model: {model_id}"
     )
+    caution = (
+        "Caution: AI visual indication only; not chemical confirmation. "
+        "Reflections, shadows, camera motion, and other lookalikes can cause false positives. Verify before taking action."
+    )
+    summary_prefix = "Evidence summary:\n"
+    max_summary_length = 1024 - len(summary_prefix) - len(caution) - 2
+    details = f"{summary_prefix}{summary[:max_summary_length]}\n\n{caution}"
 
-    delivery = await _send_telegram_photo(
-        photo=photo,
-        filename=file.filename or "incident-evidence.jpg",
+    delivery = await _send_telegram_media_group(
+        original=original_photo,
+        prediction=predicted_photo,
         caption=caption,
+        details=details,
+    )
+    log.info(
+        "Telegram %s delivered for incident %s with message IDs %s",
+        alert_type,
+        incident_id,
+        delivery["message_ids"],
     )
 
     return {

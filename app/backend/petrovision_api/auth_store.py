@@ -15,9 +15,22 @@ from pathlib import Path
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 SESSION_TTL_SECONDS = 12 * 60 * 60
-PASSWORD_MIN_LENGTH = 12
+PASSWORD_MIN_LENGTH = 8
 _DUMMY_SALT = b"petrovision-login-timing"
 _DUMMY_HASH = hashlib.scrypt(b"not-a-password", salt=_DUMMY_SALT, n=2**14, r=8, p=1, dklen=64)
+
+
+def validate_password(password: str) -> None:
+    if len(password) < PASSWORD_MIN_LENGTH:
+        raise ValueError(f"Password must contain at least {PASSWORD_MIN_LENGTH} characters.")
+    if not any(char.islower() for char in password):
+        raise ValueError("Password must contain a lowercase letter.")
+    if not any(char.isupper() for char in password):
+        raise ValueError("Password must contain an uppercase letter.")
+    if not any(char.isdigit() for char in password):
+        raise ValueError("Password must contain a number.")
+    if not any(not (char.isascii() and char.isalnum()) for char in password):
+        raise ValueError("Password must contain a special character.")
 
 
 class AuthStore:
@@ -41,13 +54,6 @@ class AuthStore:
         with self._init_lock:
             if self._initialized:
                 return
-            if bool(self.admin_email) != bool(self.admin_password):
-                raise RuntimeError("Set both PETROVISION_ADMIN_EMAIL and PETROVISION_ADMIN_PASSWORD to bootstrap the first admin.")
-            if self.admin_email and (not EMAIL_RE.fullmatch(self.admin_email) or len(self.admin_email) > 254):
-                raise RuntimeError("PETROVISION_ADMIN_EMAIL must be a valid email address.")
-            if self.admin_password and len(self.admin_password) < PASSWORD_MIN_LENGTH:
-                raise RuntimeError("PETROVISION_ADMIN_PASSWORD must contain at least 12 characters.")
-
             with self._connect() as db:
                 db.executescript(
                     """
@@ -73,7 +79,18 @@ class AuthStore:
                     );
                     """
                 )
-                if self.admin_email:
+                has_users = db.execute("SELECT 1 FROM users LIMIT 1").fetchone() is not None
+                if not has_users:
+                    if bool(self.admin_email) != bool(self.admin_password):
+                        raise RuntimeError("Set both PETROVISION_ADMIN_EMAIL and PETROVISION_ADMIN_PASSWORD to bootstrap the first admin.")
+                    if self.admin_email and (not EMAIL_RE.fullmatch(self.admin_email) or len(self.admin_email) > 254):
+                        raise RuntimeError("PETROVISION_ADMIN_EMAIL must be a valid email address.")
+                    if self.admin_password:
+                        try:
+                            validate_password(self.admin_password)
+                        except ValueError as exc:
+                            raise RuntimeError(f"PETROVISION_ADMIN_PASSWORD is invalid: {exc}") from exc
+                if not has_users and self.admin_email:
                     db.execute(
                         """INSERT OR IGNORE INTO users (id, email, password_hash, role, created_at)
                            VALUES (?, ?, ?, 'admin', ?)""",
@@ -175,8 +192,7 @@ class AuthStore:
         normalized = email.strip().lower()
         if len(normalized) > 254 or not EMAIL_RE.fullmatch(normalized):
             raise ValueError("Enter a valid email address.")
-        if len(password) < PASSWORD_MIN_LENGTH:
-            raise ValueError(f"Password must contain at least {PASSWORD_MIN_LENGTH} characters.")
+        validate_password(password)
         request_id = uuid.uuid4().hex
         requested_at = int(time.time())
         with self._connect() as db:
@@ -236,8 +252,7 @@ class AuthStore:
         normalized = email.strip().lower()
         if len(normalized) > 254 or not EMAIL_RE.fullmatch(normalized):
             raise ValueError("Enter a valid email address.")
-        if len(password) < PASSWORD_MIN_LENGTH:
-            raise ValueError(f"Password must contain at least {PASSWORD_MIN_LENGTH} characters.")
+        validate_password(password)
         if role not in {"user", "admin"}:
             raise ValueError("Role must be user or admin.")
         user_id = uuid.uuid4().hex

@@ -80,7 +80,7 @@ MODEL_SPECS: tuple[ModelSpec, ...] = (
         initialization="ADE20K-pretrained, fine-tuned on LADOS",
         description="Transformer mask-classification model; semantic map derived from query masks.",
         default_checkpoint="cv_mask2former_001_best.pt",
-        requires=("torch", "transformers"),
+        requires=("torch", "transformers", "scipy"),
         input_note="256x256 RGB through the Mask2Former image processor",
     ),
     ModelSpec(

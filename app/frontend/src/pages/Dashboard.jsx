@@ -9,7 +9,7 @@ import { colorFor } from '../lib/models'
 import { fmtInt, fmtMs, fmtPct } from '../lib/format'
 import { useTween } from '../lib/useTween'
 import { useAnalysisAssets } from '../lib/useAnalysisAssets'
-import AnalysisViewer from '../components/AnalysisViewer'
+import AnalysisEvidence from '../components/AnalysisEvidence'
 import ScanHero from '../components/ScanHero'
 import { IconCamera, IconCube, IconLayers, IconScan } from '../components/icons'
 import { Badge, Skeleton } from '../components/ui'
@@ -28,7 +28,6 @@ const CAPABILITIES = [
   ['Live camera analysis', 'Scan with your camera and watch regions appear in real time.'],
   ['3D visualization', 'Explore a prediction as an interactive image-space surface.'],
 ]
-const OPTS = { mode: 'instances', color: '#e5322d', opacity: 0.4, showBoxes: false, showLabels: true, hidden: new Set(), selected: null, hover: null }
 
 function Kpi({ label, value, digits = 0, unit, pad = 0, accent }) {
   const v = useTween(value ?? null, 650)
@@ -1576,7 +1575,7 @@ function EvidenceMetric({
   value,
 }) {
   return (
-    <div className="rounded-lg border border-line bg-panel px-3 py-2">
+    <div className="rounded-lg border border-line bg-surface px-3 py-2">
 
       <div className="text-[9px] uppercase tracking-wider text-ink-3">
         {label}
@@ -1637,16 +1636,16 @@ export default function Dashboard() {
               <div><div className="text-[15px] font-semibold text-ink">No analysis yet</div><p className="mt-1 text-[13px] text-ink-2">Your results will appear here.</p><Link to="/analyze" className="btn-primary mt-4">Start analysis</Link></div>
             </div>
           ) : (
-            <div className="grid gap-5 md:grid-cols-[1.25fr_1fr]">
-              <div className="h-[260px] overflow-hidden border border-line bg-surface-2"><AnalysisViewer view={latest} assets={assets} opts={OPTS} interactive={false} /></div>
-              <div className="flex flex-col justify-between">
-                <div className="grid grid-cols-2 gap-x-4 gap-y-5">
+            <div>
+              <AnalysisEvidence analysis={latest} assets={assets} imageClassName="h-[320px] lg:h-[380px]" />
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-5 border-t border-line pt-4">
+                <div className="grid flex-1 grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-4">
                   <Kpi label={latest.instances[0]?.kind === 'region' ? 'Regions' : 'Instances'} value={latest.instance_count} pad={2} />
                   <Kpi label="Coverage" value={latest.measurements.coverage_percent} digits={2} unit="%" accent="text-signal" />
                   <Kpi label="Inference" value={latest.timing.inference_ms} digits={0} unit="ms" />
                   <div className="border-l border-line-strong pl-3"><div className="label">Model</div><div className="mt-1 text-[15px] font-medium text-ink">{latest.model.label}</div></div>
                 </div>
-                <div className="mt-5 flex flex-wrap gap-2"><button type="button" className="btn-ghost" onClick={() => open(latest.id, '/analyze')}>Open analysis</button><button type="button" className="btn-oil" onClick={() => open(latest.id, '/3d')}><IconCube width={15} height={15} /> View in 3D</button></div>
+                <div className="flex flex-wrap gap-2"><button type="button" className="btn-ghost" onClick={() => open(latest.id, '/analyze')}>Open analysis</button><button type="button" className="btn-oil" onClick={() => open(latest.id, '/3d')}><IconCube width={15} height={15} /> View in 3D</button></div>
               </div>
             </div>
           )}

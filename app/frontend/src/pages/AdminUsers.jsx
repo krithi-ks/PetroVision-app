@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
-
-const PASSWORD_MIN_LENGTH = 12
+import { isPasswordValid, PASSWORD_MIN_LENGTH, passwordRequirements } from '../lib/passwordPolicy'
 
 function Avatar({ email, active }) {
   const initials = email.split('@')[0].split(/[._-]/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()
@@ -38,6 +37,7 @@ export default function AdminUsers() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [role, setRole] = useState('user')
+  const requirements = passwordRequirements(password)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -67,6 +67,10 @@ export default function AdminUsers() {
 
   const addUser = async (event) => {
     event.preventDefault()
+    if (!isPasswordValid(password)) {
+      setError('Meet all password requirements before creating an account.')
+      return
+    }
     setSaving(true)
     setError('')
     setNotice('')
@@ -211,10 +215,15 @@ export default function AdminUsers() {
             <span className="mb-1.5 block text-xs font-medium text-slate-600">Work email</span>
             <input type="email" required maxLength={254} autoComplete="off" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@organization.org" className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-4 focus:ring-teal-500/10" />
           </label>
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-slate-600">Initial password</span>
-            <input type="password" required minLength={PASSWORD_MIN_LENGTH} maxLength={1024} autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 12 characters" className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-4 focus:ring-teal-500/10" />
-          </label>
+          <div>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-medium text-slate-600">Initial password</span>
+              <input type="password" required minLength={PASSWORD_MIN_LENGTH} maxLength={1024} autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="8+ characters, mixed types" className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-4 focus:ring-teal-500/10" />
+            </label>
+            <ul aria-label="Password requirements" className="mt-1 grid grid-cols-2 gap-x-1 text-[9px] leading-4 text-slate-500">
+              {requirements.map(({ id, label, met }) => <li key={id} className={met ? 'text-teal-700' : ''}><span aria-hidden="true">{met ? '✓' : '○'}</span> {label}</li>)}
+            </ul>
+          </div>
           <label className="block">
             <span className="mb-1.5 block text-xs font-medium text-slate-600">Role</span>
             <select value={role} onChange={(event) => setRole(event.target.value)} className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-500/10">

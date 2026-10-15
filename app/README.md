@@ -43,18 +43,22 @@ Windows: `app\start.ps1`. Linux/macOS: `app/start.sh`.
 
 ## Authentication and access management
 
-The app requires a signed-in account. Before the first sign-in, copy `app/backend/.env.example` to `app/backend/.env` and set `PETROVISION_ADMIN_EMAIL` and `PETROVISION_ADMIN_PASSWORD` to the first administrator's email and a unique password of at least 12 characters. The first account is created once; changing those variables later does not reset an existing account. New users can request an account from the registration page; an administrator must approve each request before the account can sign in.
+The app requires a signed-in account. Before the first sign-in, copy `app/backend/.env.example` to `app/backend/.env` and set `PETROVISION_ADMIN_EMAIL` and `PETROVISION_ADMIN_PASSWORD` to the first administrator's email and a unique password of at least 8 characters containing uppercase and lowercase letters, a number, and a special character. The first account is created once; changing those variables later does not reset an existing account. New users can request an account from the registration page; an administrator must approve each request before the account can sign in. To receive email when a request is submitted, configure the `PETROVISION_SMTP_*` values in that same `.env` file. Requests are still recorded and shown in the administrator workspace if SMTP is not configured or delivery fails.
 
 The administrator can open **Access** in the app header to review registration requests, create user or admin accounts, revoke access, and restore accounts. New accounts created by an administrator use an administrator-chosen initial password, which should be shared privately. Revoking an account also ends its active sessions. Accounts, registration requests and sessions are stored in `app/backend/data/users.sqlite3` by default; set `PETROVISION_AUTH_DB` to move the database.
 
-The **Dashboard** page summarizes saved analyses and shows each selected source image, predicted regions, a source-image overlay, coverage trends, model usage, inference speed, timing, perimeter charts and per-region measurements. Upload analyses and saved live-scan snapshots can be opened there from their respective pages. It uses saved model outputs; visualizations are not independent environmental measurements or ground-truth scores.
+The **Overview** page keeps a compact latest-analysis preview. The **Dashboard** page shows the selected source image, black-and-white mask and prediction overlay as large vertical panels, with selectable saved analyses, coverage trends, model usage, timing and region-level measurements. Upload analyses and saved live-scan snapshots can be opened there from their respective pages. It uses saved model outputs; visualizations are not independent environmental measurements or ground-truth scores.
+
+Use the **Dark / Light** control in the app header to switch between the default light palette and a persistent, high-contrast digital dark theme. Live Scan sends Telegram alerts automatically after detections pass the consecutive-frame confidence and coverage filters below; the alert includes the original camera image, prediction overlay and incident details.
 
 For production, serve the site and API over HTTPS and set `PETROVISION_AUTH_COOKIE_SECURE=true`. Back up and restrict filesystem access to the account database, and never commit the backend `.env` file.
 
 ## YOLO26n-Seg (De Kerf) slot
 
 When no YOLO26 checkpoint is installed, the app shows **YOLO26n-Seg as unavailable**. Put the trained checkpoint at `models/cv_yolo26_001_best.pt` (any file matching `cv_yolo26*_best.pt` / `*yolo26*best.pt` anywhere under `models/` is found automatically) or set `PETROVISION_CKPT_YOLO26`. The inference image size is read from the checkpoint. YOLO26 requires Ultralytics 8.4 or newer. If the model has several classes, choose which count as petroleum-like with `PETROVISION_YOLO26_CLASSES=oil` (default: all instances). The checkpoint was trained on De Kerf drone imagery, so results may vary on other scene types.
-Live Scan selects YOLO26 by default as soon as it is available.
+Analyze and Live Scan select YOLO11 by default whenever its checkpoint is available. YOLO26 remains selectable manually.
+
+Live Scan alerts require five consecutive qualifying frames. Instance-model alerts require at least 65% model confidence and 0.1% image-space coverage; models without per-instance confidence require at least 0.5% coverage. A possible-spreading follow-up requires a further five consecutive frames with coverage at least 30% and 0.5 percentage points above the previous alert. These are conservative visual-alert filters, not validated environmental thresholds. Each Telegram alert sends an original camera frame and a prediction-overlay frame in one album, with image-space coverage, confidence when available, inference time, and a caution that visual output is not chemical confirmation.
 
 ## Where did the app look for my models?
 
@@ -90,7 +94,7 @@ GPU is used automatically when CUDA is available (`PETROVISION_DEVICE=cpu|cuda|a
 `/live` is a dedicated scanning workspace: camera feed → real-time segmentation → contours, instance brackets and readouts → an image-space 3D panel built from the predicted mask. Everything on it comes from real inference responses; nothing is simulated.
 
 * **Instance models** (YOLO11n-Seg, YOLO26n-Seg) report per-instance confidence, area, perimeter, centroid and contour. **Semantic models** (U-Net, SegFormer, …) report connected *regions* of the mask, with no confidence.
-* State machine: `IDLE → SCANNING → PROCESSING → DETECTED / NO DETECTION → COMPLETE`, plus `ERROR`. A detection is confirmed after 2 consecutive frames and cleared after 3, so sounds fire only on a meaningful change (3 s cooldown), never per frame.
+* State machine: `IDLE → SCANNING → PROCESSING → DETECTED / NO DETECTION → COMPLETE`, plus `ERROR`. A detection is confirmed after 5 consecutive qualifying frames and cleared after 3 empty frames; sounds fire only on a meaningful change (3 s cooldown), never per frame.
 * **Audio** is a central `AudioManager` (`src/lib/audio.js`): local WAV assets in `public/audio/`, initialised only after a user gesture, with on/off and volume. The assets are original, synthesised by `python app/frontend/scripts/generate_sounds.py` (re-run it to regenerate or tune them). Sound is interface feedback only.
 * The 3D panel is an *image-space* visualisation: height is derived from the predicted mask's shape, not depth, thickness or volume.
 
@@ -101,7 +105,7 @@ The backend registers `YOLO26n-Seg` and loads it automatically when its checkpoi
 ## API
 
 `GET /api/status` · `GET /api/health` (developer detail) · `GET /api/models` · `GET /api/models/{id}` · `POST /api/models/{id}/load` · `POST /api/models/{id}/unload`
-`POST /api/infer/image` (multipart `file` + `model_id`) · `POST /api/infer/frame?model_id=…` (raw JPEG body)
+`POST /api/infer/image` (multipart `file` + `model_id`) · `POST /api/infer/frame?model_id=…` (raw JPEG body) · `POST /api/incidents/telegram` (original and prediction evidence)
 `GET /api/results/comparison|benchmark|summary` · `GET /api/results/history/{id}` — interactive docs at `/docs`.
 
 The interface never shows file paths, versions or developer messages; where each checkpoint was looked for is printed in the server console at startup.
@@ -112,7 +116,7 @@ Models are loaded once, cached (LRU, `PETROVISION_MAX_LOADED_MODELS`, default 3)
 
 ```bash
 cd app/backend  && python -m pytest tests -q     # 43 tests: real checkpoints (incl. YOLO26), real inference, instances, history, De Kerf results vs the notebook, API contract
-cd app/frontend && npm test                      # 23 tests: UI behaviour, audio manager, scan helpers, mask→surface math
+cd app/frontend && npm test                      # 54 tests: UI behaviour, dashboards, theme selection, audio manager, scan helpers, mask→surface math
 ```
 
 ## Scientific guard-rails built into the app

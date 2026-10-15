@@ -4,6 +4,7 @@ import { api, ApiError } from '../lib/api'
 import { audio, SOUNDS } from '../audio/AudioManager'
 import { binaryMaskPixels, buildSurfaceGrid } from '../lib/labelGrid'
 import { colorOf, regionLabel } from '../scan/palette'
+import { isAlertCandidate, isSpreadingCoverage } from '../scan/useLiveScan'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -16,6 +17,34 @@ describe('format', () => {
     expect(fmtMs(8.18)).toBe('8.2 ms')
     expect(fmtMs(150.87)).toBe('151 ms')
     expect(fmtMs(undefined)).toBe('—')
+  })
+
+  describe('live alert qualification', () => {
+    const instanceResult = (confidence, coverage) => ({
+      measurements: { coverage_percent: coverage },
+      instances: [{ kind: 'instance', confidence }],
+    })
+
+    it('requires meaningful coverage and strong confidence for instance alerts', () => {
+      expect(isAlertCandidate(instanceResult(0.64, 4))).toBe(false)
+      expect(isAlertCandidate(instanceResult(0.9, 0.09))).toBe(false)
+      expect(isAlertCandidate(instanceResult(0.9, 0.1))).toBe(true)
+    })
+
+    it('requires larger persistent regions when the model does not report confidence', () => {
+      const regionResult = (coverage) => ({
+        measurements: { coverage_percent: coverage },
+        instances: [{ kind: 'region', confidence: null }],
+      })
+      expect(isAlertCandidate(regionResult(0.49))).toBe(false)
+      expect(isAlertCandidate(regionResult(0.5))).toBe(true)
+    })
+
+    it('only calls a sustained coverage increase spreading after both thresholds are reached', () => {
+      expect(isSpreadingCoverage(1.49, 1)).toBe(false)
+      expect(isSpreadingCoverage(1.5, 1)).toBe(true)
+      expect(isSpreadingCoverage(0.9, 1)).toBe(false)
+    })
   })
 })
 
@@ -40,6 +69,23 @@ describe('api client', () => {
     expect(opts.method).toBe('POST')
     expect(opts.body.get('model_id')).toBe('unet')
     expect(opts.body.get('file').name).toBe('a.png')
+  })
+  it('sends original and prediction images together for Telegram alerts', async () => {
+    const spy = vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => '{"sent":true}' })
+    vi.stubGlobal('fetch', spy)
+    await api.sendTelegramIncident({
+      image: new Blob(['original']),
+      predictedImage: new Blob(['prediction']),
+      incidentId: 'PV-123',
+      timestamp: '2026-10-15T10:00:00Z',
+      modelId: 'yolo',
+      alertType: 'spreading',
+      summary: 'Coverage increased.',
+    })
+    const form = spy.mock.calls[0][1].body
+    expect(form.get('file').name).toBe('original-frame.jpg')
+    expect(form.get('prediction').name).toBe('predicted-frame.jpg')
+    expect(form.get('alert_type')).toBe('spreading')
   })
 })
 

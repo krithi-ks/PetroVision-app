@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from ..auth_store import AuthStore, PASSWORD_MIN_LENGTH, SESSION_TTL_SECONDS
+from ..email_notifications import send_registration_notification
 
 router = APIRouter(prefix="/api")
 SESSION_COOKIE = "petrovision_session"
@@ -91,9 +92,15 @@ def register(payload: RegistrationRequest, request: Request):
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    notification_status = send_registration_notification(
+        request.app.state.settings,
+        registration["email"],
+        registration["requested_at"],
+    )
     return {
         "message": "Registration submitted. An administrator must approve your access before you can sign in.",
         "requested_at": registration["requested_at"],
+        "notification_status": notification_status,
     }
 
 

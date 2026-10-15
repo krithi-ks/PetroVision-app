@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from '../context/AuthContext'
+import { ThemeProvider } from '../context/ThemeContext'
 import Login from '../pages/Login'
 import Register from '../pages/Register'
 import AdminUsers from '../pages/AdminUsers'
@@ -32,16 +33,23 @@ describe('authentication screens', () => {
     }))
     render(
       <MemoryRouter initialEntries={['/login']}>
-        <AuthProvider>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/" element={<div>Workspace ready</div>} />
-          </Routes>
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/" element={<div>Workspace ready</div>} />
+            </Routes>
+          </AuthProvider>
+        </ThemeProvider>
       </MemoryRouter>,
     )
+    expect(await screen.findByText('Enter your credentials to continue')).toBeTruthy()
     fireEvent.change(await screen.findByLabelText('Email address'), { target: { value: admin.email } })
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'server-password' } })
+    expect(await screen.findByText('Credentials ready for secure verification')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Show' }))
+    expect(screen.getByLabelText('Password').type).toBe('text')
+    fireEvent.click(screen.getByRole('button', { name: 'Hide' }))
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
     expect(await screen.findByText('Workspace ready')).toBeTruthy()
   })
@@ -51,7 +59,7 @@ describe('authentication screens', () => {
       if (String(url) === '/api/auth/session') return respond({ detail: 'Sign in to continue.' }, 401)
       return respond({ detail: 'Email or password is incorrect.' }, 401)
     }))
-    render(<MemoryRouter><AuthProvider><Login /></AuthProvider></MemoryRouter>)
+    render(<MemoryRouter><ThemeProvider><AuthProvider><Login /></AuthProvider></ThemeProvider></MemoryRouter>)
     fireEvent.change(await screen.findByLabelText('Email address'), { target: { value: 'wrong@example.test' } })
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'wrong-password' } })
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
@@ -66,10 +74,10 @@ describe('authentication screens', () => {
       }, 202)
       return respond({ error: { message: 'Unexpected request' } }, 404)
     }))
-    render(<MemoryRouter><AuthProvider><Register /></AuthProvider></MemoryRouter>)
+    render(<MemoryRouter><ThemeProvider><AuthProvider><Register /></AuthProvider></ThemeProvider></MemoryRouter>)
     fireEvent.change(await screen.findByLabelText('Email address'), { target: { value: 'pending@example.test' } })
-    fireEvent.change(screen.getByLabelText('Create password'), { target: { value: 'registration-password-123' } })
-    fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'registration-password-123' } })
+    fireEvent.change(screen.getByLabelText('Create password'), { target: { value: 'Registration-password-123!' } })
+    fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'Registration-password-123!' } })
     fireEvent.click(screen.getByRole('button', { name: 'Request an account' }))
     expect((await screen.findByRole('status')).textContent).toContain('Request sent for review')
     expect(screen.getByText(/administrator approval/i)).toBeTruthy()
@@ -89,7 +97,7 @@ describe('authentication screens', () => {
     render(<MemoryRouter><AuthProvider><AdminUsers /></AuthProvider></MemoryRouter>)
 
     fireEvent.change(await screen.findByLabelText('Work email'), { target: { value: member.email } })
-    fireEvent.change(screen.getByLabelText('Initial password'), { target: { value: 'initial-password-123' } })
+    fireEvent.change(screen.getByLabelText('Initial password'), { target: { value: 'Initial-password-123!' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add access' }))
     await screen.findByText(member.email)
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/admin/users', expect.objectContaining({ method: 'POST' })))
@@ -137,6 +145,7 @@ describe('authentication screens', () => {
       instances: [{
         index: 1, id: '01', kind: 'instance', class_name: 'oil', area_px: 38400,
         coverage_percent: 12.5, confidence: 0.91, centroid: { x: 200, y: 150 },
+        bounding_box: { x: 80, y: 60, width: 200, height: 120 },
       }],
     }
     vi.stubGlobal('fetch', vi.fn(async (url) => {
@@ -151,7 +160,9 @@ describe('authentication screens', () => {
     expect((await screen.findByRole('option')).textContent).toContain('coast.jpg')
     expect(screen.getByRole('img', { name: 'Analysed source image: coast.jpg' })).toBeTruthy()
     expect(screen.getByText('Region details')).toBeTruthy()
+    expect(screen.getByText('Coverage over time')).toBeTruthy()
+    expect(screen.getByText('Instances · bounding boxes')).toBeTruthy()
     expect(screen.getAllByText('YOLO11n-Seg').length).toBeGreaterThan(0)
-    expect(screen.getByText('38,400 px')).toBeTruthy()
+    expect(screen.getAllByText('38,400 px').length).toBeGreaterThan(0)
   })
 })

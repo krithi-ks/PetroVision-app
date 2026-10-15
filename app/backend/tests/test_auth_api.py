@@ -6,7 +6,7 @@ from conftest import with_settings
 from petrovision_api.main import create_app
 
 ADMIN_EMAIL = "captain@example.test"
-ADMIN_PASSWORD = "secure-admin-test-password"
+ADMIN_PASSWORD = "Secure-admin-test-password1!"
 
 
 def make_client(settings, tmp_path, *, configured=True):
@@ -40,7 +40,7 @@ def test_admin_can_create_and_revoke_a_user_and_revocation_expires_sessions(sett
     assert admin.post("/api/auth/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}).status_code == 200
     created = admin.post("/api/admin/users", json={
         "email": "researcher@example.test",
-        "password": "initial-password-123",
+        "password": "Initial-password-123!",
         "role": "user",
     })
     assert created.status_code == 201
@@ -50,7 +50,7 @@ def test_admin_can_create_and_revoke_a_user_and_revocation_expires_sessions(sett
     member = make_client(settings, tmp_path)
     assert member.post("/api/auth/login", json={
         "email": "researcher@example.test",
-        "password": "initial-password-123",
+        "password": "Initial-password-123!",
     }).status_code == 200
     assert member.get("/api/status").status_code == 200
     assert member.get("/api/admin/users").status_code == 403
@@ -60,7 +60,7 @@ def test_admin_can_create_and_revoke_a_user_and_revocation_expires_sessions(sett
     assert member.get("/api/status").status_code == 401
     assert member.post("/api/auth/login", json={
         "email": "researcher@example.test",
-        "password": "initial-password-123",
+        "password": "Initial-password-123!",
     }).status_code == 401
 
     restored = admin.patch(f"/api/admin/users/{user_id}", json={"active": True})
@@ -71,11 +71,20 @@ def test_admin_account_validation_and_last_admin_protection(settings, tmp_path):
     client = make_client(settings, tmp_path)
     client.post("/api/auth/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
     assert client.post("/api/admin/users", json={
-        "email": ADMIN_EMAIL, "password": "another-password-123", "role": "user",
+        "email": ADMIN_EMAIL, "password": "Another-password-123!", "role": "user",
     }).status_code == 400
     assert client.post("/api/admin/users", json={
         "email": "short@example.test", "password": "short", "role": "user",
     }).status_code == 422
+    weak = client.post("/api/admin/users", json={
+        "email": "weak@example.test", "password": "lowercase1!", "role": "user",
+    })
+    assert weak.status_code == 400
+    assert "uppercase" in weak.json()["detail"].lower()
+    valid_eight_character_password = client.post("/api/admin/users", json={
+        "email": "eight@example.test", "password": "Aa1!bcDE", "role": "user",
+    })
+    assert valid_eight_character_password.status_code == 201
 
     admin = client.get("/api/auth/session").json()["user"]
     assert client.patch(f"/api/admin/users/{admin['id']}", json={"active": False}).status_code == 400
@@ -84,7 +93,7 @@ def test_admin_account_validation_and_last_admin_protection(settings, tmp_path):
         store.set_active(admin["id"], False)
     second_admin = client.post("/api/admin/users", json={
         "email": "second-admin@example.test",
-        "password": "another-secure-password",
+        "password": "Another-secure-password1!",
         "role": "admin",
     }).json()["user"]
     store.set_active(admin["id"], False)
@@ -99,10 +108,34 @@ def test_login_explains_missing_admin_bootstrap_configuration(settings, tmp_path
     assert "PETROVISION_ADMIN_EMAIL" in response.json()["detail"]
 
 
+def test_existing_account_is_not_blocked_by_outdated_bootstrap_password(settings, tmp_path):
+    initial = make_client(settings, tmp_path)
+    assert initial.post("/api/auth/login", json={
+        "email": ADMIN_EMAIL,
+        "password": ADMIN_PASSWORD,
+    }).status_code == 200
+
+    changed_config = with_settings(
+        settings,
+        auth_db_path=tmp_path / "users.sqlite3",
+        bootstrap_admin_email=ADMIN_EMAIL,
+        bootstrap_admin_password="legacy-weak-bootstrap",
+        auth_cookie_secure=False,
+    )
+    existing_account = TestClient(create_app(changed_config))
+    response = existing_account.post("/api/auth/login", json={
+        "email": ADMIN_EMAIL,
+        "password": ADMIN_PASSWORD,
+    })
+
+    assert response.status_code == 200
+    assert existing_account.get("/api/status").status_code == 200
+
+
 def test_registration_requests_require_admin_approval_before_login(settings, tmp_path):
     admin = make_client(settings, tmp_path)
     registered_email = "new.member@example.test"
-    registered_password = "registered-password-123"
+    registered_password = "Registered-password-123!"
     request = admin.post("/api/auth/register", json={
         "email": registered_email,
         "password": registered_password,
@@ -146,7 +179,7 @@ def test_registration_request_can_be_declined(settings, tmp_path):
     admin = make_client(settings, tmp_path)
     request = admin.post("/api/auth/register", json={
         "email": "declined@example.test",
-        "password": "declined-password-123",
+        "password": "Declined-password-123!",
     })
     assert request.status_code == 202
     admin.post("/api/auth/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
@@ -155,5 +188,25 @@ def test_registration_request_can_be_declined(settings, tmp_path):
     assert admin.get("/api/admin/registration-requests").json()["requests"] == []
     assert admin.post("/api/auth/login", json={
         "email": "declined@example.test",
-        "password": "declined-password-123",
+        "password": "Declined-password-123!",
     }).status_code == 401
+
+
+def test_registration_request_reports_admin_email_notification(settings, tmp_path, monkeypatch):
+    notifications = []
+
+    def send_notification(config, email, requested_at):
+        notifications.append((config.bootstrap_admin_email, email, requested_at))
+        return "sent"
+
+    monkeypatch.setattr("petrovision_api.routes.auth.send_registration_notification", send_notification)
+    client = make_client(settings, tmp_path)
+    response = client.post("/api/auth/register", json={
+        "email": "email-notice@example.test",
+        "password": "Valid-registration-1!",
+    })
+
+    assert response.status_code == 202
+    assert response.json()["notification_status"] == "sent"
+    assert notifications[0][0:2] == (ADMIN_EMAIL, "email-notice@example.test")
+    assert notifications[0][2] == response.json()["requested_at"]

@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import {
-  Area,
-  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
+  Area,
+  AreaChart,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -18,15 +18,15 @@ import { api } from '../lib/api'
 import { fmt, fmtInt, fmtMs, fmtPct } from '../lib/format'
 import { colorFor } from '../lib/models'
 import { Badge, Notice, Skeleton } from '../components/ui'
-import { binaryMaskPixels, buildFillCanvas } from '../lib/labelGrid'
 import { useAnalysisAssets } from '../lib/useAnalysisAssets'
+import AnalysisEvidence from '../components/AnalysisEvidence'
 
-const tooltipStyle = { background: '#fff', border: '1px solid #cbd5e1', borderRadius: 12, fontSize: 12 }
+const tooltipStyle = { background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12, color: 'var(--ink)', fontSize: 12 }
 const chartColors = ['#0f766e', '#0284c7', '#6366f1', '#f59e0b', '#e11d48', '#64748b']
 
 function StatCard({ label, value, hint, accent = 'text-slate-900' }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_4px_20px_rgba(15,23,42,0.025)]">
+    <div className="analytics-card rounded-2xl border border-line bg-surface p-5">
       <div className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">{label}</div>
       <div className={`mt-3 text-[28px] font-semibold leading-none tracking-tight ${accent}`}>{value}</div>
       <div className="mt-2 text-xs text-slate-400">{hint}</div>
@@ -36,7 +36,7 @@ function StatCard({ label, value, hint, accent = 'text-slate-900' }) {
 
 function ChartPanel({ title, subtitle, children, className = '' }) {
   return (
-    <section className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_4px_20px_rgba(15,23,42,0.025)] ${className}`}>
+    <section className={`analytics-card rounded-2xl border border-line bg-surface p-5 ${className}`}>
       <div className="mb-4">
         <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
         <p className="mt-1 text-xs text-slate-400">{subtitle}</p>
@@ -48,72 +48,10 @@ function ChartPanel({ title, subtitle, children, className = '' }) {
 
 function DetailMetric({ label, value, unit }) {
   return (
-    <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-4 py-3">
+    <div className="rounded-xl border border-line bg-surface-2 px-4 py-3">
       <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-slate-400">{label}</div>
       <div className="mt-1.5 text-sm font-semibold tabular-nums text-slate-800">{value ?? '—'}{unit && value != null && <span className="ml-1 text-[10px] font-normal text-slate-400">{unit}</span>}</div>
     </div>
-  )
-}
-
-function OverlayPreview({ analysis, assets }) {
-  const [overlay, setOverlay] = useState('')
-  useEffect(() => {
-    if (!analysis || assets.status !== 'ready' || !assets.img || !assets.lab) {
-      setOverlay('')
-      return undefined
-    }
-    const canvas = document.createElement('canvas')
-    canvas.width = assets.img.naturalWidth
-    canvas.height = assets.img.naturalHeight
-    const context = canvas.getContext('2d')
-    if (!context) return undefined
-    context.drawImage(assets.img, 0, 0, canvas.width, canvas.height)
-    context.drawImage(buildFillCanvas(assets.lab, ['#ef4444'], 0.45), 0, 0, canvas.width, canvas.height)
-    setOverlay(canvas.toDataURL('image/png'))
-    return undefined
-  }, [analysis?.id, assets])
-
-  return (
-    <figure className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-      <div className="border-b border-slate-200 px-3 py-2 font-mono text-[9px] uppercase tracking-[0.12em] text-slate-500">Prediction overlay</div>
-      {overlay ? <img src={overlay} alt="Original image with predicted petroleum regions overlaid" className="h-[250px] w-full object-contain" />
-        : <div className="grid h-[250px] place-items-center text-xs text-slate-400">{assets.status === 'error' ? 'Overlay unavailable.' : 'Preparing overlay…'}</div>}
-    </figure>
-  )
-}
-
-function PredictedMaskPreview({ analysis, assets }) {
-  const [mask, setMask] = useState('')
-
-  useEffect(() => {
-    if (!analysis || assets.status !== 'ready' || !assets.lab) {
-      setMask('')
-      return undefined
-    }
-
-    const { labels, w, h } = assets.lab
-    const canvas = document.createElement('canvas')
-    canvas.width = w
-    canvas.height = h
-    const context = canvas.getContext('2d')
-    if (!context) {
-      setMask('')
-      return undefined
-    }
-
-    const imageData = context.createImageData(w, h)
-    imageData.data.set(binaryMaskPixels(labels))
-    context.putImageData(imageData, 0, 0)
-    setMask(canvas.toDataURL('image/png'))
-    return undefined
-  }, [analysis?.id, assets])
-
-  return (
-    <figure className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-      <div className="border-b border-slate-200 px-3 py-2 font-mono text-[9px] uppercase tracking-[0.12em] text-slate-500">Predicted mask · black and white</div>
-      {mask ? <img src={mask} alt="Binary predicted mask: black background and white predicted regions" className="h-[250px] w-full object-contain [image-rendering:pixelated]" />
-        : <div className="grid h-[250px] place-items-center text-xs text-slate-400">{assets.status === 'error' ? 'Mask unavailable.' : 'Preparing mask…'}</div>}
-    </figure>
   )
 }
 
@@ -162,12 +100,6 @@ export default function AnalyticsDashboard() {
     return () => { active = false }
   }, [selectedId])
 
-  const coverageData = useMemo(() => [...history].reverse().map((item) => ({
-    date: new Date(item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-    coverage: Number(item.coverage_percent) || 0,
-    model: item.model?.label || item.model?.id || 'Unknown',
-  })), [history])
-
   const modelData = useMemo(() => {
     const counts = new Map()
     for (const item of history) {
@@ -178,6 +110,15 @@ export default function AnalyticsDashboard() {
     }
     return [...counts.values()]
   }, [history])
+  const coverageTrend = useMemo(() => history
+    .slice()
+    .sort((left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime())
+    .map((item) => ({
+      id: item.id,
+      time: new Date(item.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+      coverage: Number(item.coverage_percent) || 0,
+      filename: item.filename || item.id,
+    })), [history])
 
   const instances = useMemo(() => (analysis?.instances || []).map((item) => ({
     ...item,
@@ -192,16 +133,21 @@ export default function AnalyticsDashboard() {
     ? history.reduce((sum, item) => sum + (Number(item.inference_ms) || 0), 0) / history.length
     : null
   const totalRegions = history.reduce((sum, item) => sum + (Number(item.instance_count) || 0), 0)
+  const selectedIndex = history.findIndex((item) => item.id === selectedId)
+  const stepAnalysis = (offset) => {
+    const item = history[selectedIndex + offset]
+    if (item) setSelectedId(item.id)
+  }
 
   return (
     <div className="mx-auto max-w-[1400px]">
-      <div className="mb-7 flex flex-col justify-between gap-4 border-b border-slate-200 pb-6 sm:flex-row sm:items-end">
+      <div className="mb-7 flex flex-col justify-between gap-4 border-b border-line pb-6 sm:flex-row sm:items-end">
         <div>
-          <div className="mb-2 flex items-center gap-2 font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-teal-700"><span className="h-1.5 w-1.5 rounded-full bg-teal-500" /> Analysis intelligence</div>
-          <h1 className="text-3xl font-semibold tracking-tight text-slate-900">Analytics dashboard</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">Explore saved image analyses, petroleum coverage, model usage and region-level measurements.</p>
+          <div className="mb-2 flex items-center gap-2 font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-accent"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" /> Analysis intelligence</div>
+          <h1 className="text-3xl font-semibold tracking-tight text-ink">Analytics dashboard</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-2">Explore saved image analyses, petroleum coverage, model usage and region-level measurements.</p>
         </div>
-        <Link to="/analyze" className="inline-flex h-10 items-center justify-center gap-2 self-start rounded-lg bg-[#0c4c57] px-4 text-sm font-semibold text-white transition hover:bg-[#0a6267] sm:self-auto">
+        <Link to="/analyze" className="btn-primary self-start sm:self-auto">
           <span aria-hidden="true">＋</span> Analyze an image
         </Link>
       </div>
@@ -218,32 +164,25 @@ export default function AnalyticsDashboard() {
       {loading ? (
         <div className="grid gap-5 xl:grid-cols-[1.45fr_1fr]"><Skeleton className="h-[420px]" /><Skeleton className="h-[420px]" /></div>
       ) : history.length === 0 ? (
-        <section className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center">
+        <section className="analytics-card rounded-2xl border border-dashed border-line-strong bg-surface px-6 py-16 text-center">
           <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-teal-50 text-2xl text-teal-700">🌊</div>
-          <h2 className="mt-4 text-lg font-semibold text-slate-900">Your analysis dashboard is ready</h2>
-          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">Run an image analysis to see the original image, detected petroleum regions, coverage trends and detailed measurements here.</p>
-          <Link to="/analyze" className="mt-5 inline-flex h-10 items-center justify-center rounded-lg bg-teal-700 px-4 text-sm font-semibold text-white hover:bg-teal-800">Start an analysis</Link>
+          <h2 className="mt-4 text-lg font-semibold text-ink">Your analysis dashboard is ready</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-ink-2">Run an image analysis to see the original image, detected petroleum regions, coverage trends and detailed measurements here.</p>
+          <Link to="/analyze" className="btn-primary mt-5">Start an analysis</Link>
         </section>
       ) : (
         <>
-          <div className="mb-5 grid gap-5 xl:grid-cols-[1.45fr_1fr]">
+          <div className="mb-5 grid items-start gap-5 xl:grid-cols-[1.45fr_1fr]">
             <ChartPanel title="Saved analysis" subtitle="Select a scan to inspect the image, model output and measurements." className="min-w-0">
               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <select aria-label="Choose saved analysis" value={selectedId} onChange={(event) => setSelectedId(event.target.value)} className="h-10 min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-teal-500 sm:max-w-[390px]">
+                <select aria-label="Choose saved analysis" value={selectedId} onChange={(event) => setSelectedId(event.target.value)} className="h-10 min-w-0 rounded-lg border border-line bg-surface px-3 text-xs text-ink outline-none focus:border-accent sm:max-w-[390px]">
                   {history.map((item) => <option key={item.id} value={item.id}>{new Date(item.created_at).toLocaleString()} · {item.filename || item.id} · {fmtPct(item.coverage_percent)}</option>)}
                 </select>
                 {analysis?.model && <Badge kind="muted">{analysis.model.label || analysis.model.id}</Badge>}
               </div>
               {analysisError && <Notice tone="error" title="Analysis unavailable">{analysisError}</Notice>}
               {analysisLoading ? <Skeleton className="h-[270px]" /> : analysis?.urls && (
-                <div className="grid gap-3 md:grid-cols-3">
-                  <figure className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                    <div className="border-b border-slate-200 px-3 py-2 font-mono text-[9px] uppercase tracking-[0.12em] text-slate-500">Source image</div>
-                    <img src={analysis.urls.source} alt={`Analysed source image: ${analysis.image?.filename || 'saved scan'}`} className="h-[250px] w-full object-contain" />
-                  </figure>
-                  <PredictedMaskPreview analysis={analysis} assets={analysisAssets} />
-                  <OverlayPreview analysis={analysis} assets={analysisAssets} />
-                </div>
+                <AnalysisEvidence analysis={analysis} assets={analysisAssets} stacked showInstances imageClassName="h-[min(64vh,680px)] min-h-[380px] w-full" />
               )}
               {analysis && (
                 <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -258,19 +197,55 @@ export default function AnalyticsDashboard() {
               )}
             </ChartPanel>
 
-            <ChartPanel title="Coverage over time" subtitle="Petroleum-like pixel coverage recorded for each saved analysis.">
-              {coverageData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={318}>
-                  <AreaChart data={coverageData} margin={{ top: 8, right: 8, left: -18, bottom: 2 }}>
-                    <defs><linearGradient id="coverageFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#0f766e" stopOpacity={0.24} /><stop offset="95%" stopColor="#0f766e" stopOpacity={0.01} /></linearGradient></defs>
-                    <CartesianGrid stroke="#e8eef2" vertical={false} />
-                    <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} minTickGap={22} />
-                    <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} unit="%" />
-                    <Tooltip contentStyle={tooltipStyle} formatter={(value) => [`${fmt(value, 2)}%`, 'Coverage']} labelFormatter={(label, items) => `${label}${items?.[0]?.payload?.model ? ` · ${items[0].payload.model}` : ''}`} />
-                    <Area type="monotone" dataKey="coverage" stroke="#0f766e" strokeWidth={2.5} fill="url(#coverageFill)" activeDot={{ r: 5, fill: '#0f766e' }} />
+            <ChartPanel title="Selected image footprint" subtitle="Inspect the petroleum-like pixel footprint in each saved image.">
+              {analysis ? (
+                <div className="rounded-xl border border-line bg-surface-2 p-4">
+                  <div className="flex items-end justify-between gap-4">
+                    <div><div className="font-mono text-[9px] uppercase tracking-[0.14em] text-ink-3">Image-space coverage</div><div className="mt-2 font-mono text-4xl font-semibold tracking-tight text-accent">{fmtPct(measurements?.coverage_percent)}</div></div>
+                    <div className="text-right"><div className="font-mono text-[9px] uppercase tracking-[0.14em] text-ink-3">Detected area</div><div className="mt-2 font-mono text-sm text-ink">{fmtInt(measurements?.petroleum_pixels)} px</div></div>
+                  </div>
+                  <div className="mt-4 h-3 overflow-hidden rounded-full bg-line">
+                    <div className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-orange-400 transition-[width] duration-700" style={{ width: `${Math.max(0, Math.min(100, Number(measurements?.coverage_percent) || 0))}%` }} />
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <span className="min-w-0 truncate text-xs text-ink-2">{analysis.image?.filename || analysis.id}</span>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button type="button" className="btn-ghost !h-8 !px-3" aria-label="Previous saved analysis" onClick={() => stepAnalysis(1)} disabled={selectedIndex < 0 || selectedIndex >= history.length - 1}>←</button>
+                      <span className="font-mono text-[10px] text-ink-3">{selectedIndex + 1} / {history.length}</span>
+                      <button type="button" className="btn-ghost !h-8 !px-3" aria-label="Next saved analysis" onClick={() => stepAnalysis(-1)} disabled={selectedIndex <= 0}>→</button>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <DetailMetric label="Predicted regions" value={fmtInt(analysis.instance_count)} />
+                    <DetailMetric label="Model" value={analysis.model?.label || analysis.model?.id} />
+                  </div>
+                </div>
+              ) : <div className="grid min-h-[180px] place-items-center text-sm text-ink-3">Choose a saved image to inspect its predicted footprint.</div>}
+            </ChartPanel>
+          </div>
+
+          <div className="mb-5">
+            <ChartPanel title="Coverage over time" subtitle="Select any point to open that saved image analysis.">
+              {coverageTrend.length > 1 ? (
+                <ResponsiveContainer width="100%" height={260}>
+                  <AreaChart data={coverageTrend} margin={{ top: 12, right: 12, left: 0, bottom: 0 }}
+                    onClick={(event) => {
+                      const id = event?.activePayload?.[0]?.payload?.id
+                      if (id) setSelectedId(id)
+                    }}>
+                    <defs><linearGradient id="coverageTrendFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--chart-primary)" stopOpacity={0.34} /><stop offset="100%" stopColor="var(--chart-primary)" stopOpacity={0.02} /></linearGradient></defs>
+                    <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
+                    <XAxis dataKey="time" minTickGap={24} tick={{ fill: 'var(--chart-tick)', fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <YAxis unit="%" width={48} tick={{ fill: 'var(--chart-tick)', fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={tooltipStyle} formatter={(value) => [`${fmt(value, 2)}%`, 'Coverage']} labelFormatter={(label, payload) => payload?.[0]?.payload?.filename || label} />
+                    <Area type="monotone" dataKey="coverage" stroke="var(--chart-primary)" strokeWidth={2} fill="url(#coverageTrendFill)" activeDot={{ r: 6, strokeWidth: 2, cursor: 'pointer' }} />
                   </AreaChart>
                 </ResponsiveContainer>
-              ) : <div className="grid h-[318px] place-items-center text-sm text-slate-400">No coverage measurements yet.</div>}
+              ) : (
+                <div className="grid min-h-[180px] place-items-center rounded-xl border border-dashed border-line bg-surface-2 px-5 text-center text-sm text-ink-3">
+                  {coverageTrend.length === 1 ? 'Run another analysis to compare coverage over time.' : 'Saved scans will appear here as an interactive coverage trend.'}
+                </div>
+              )}
             </ChartPanel>
           </div>
 
@@ -297,11 +272,11 @@ export default function AnalyticsDashboard() {
               {instances.length > 0 ? (
                 <ResponsiveContainer width="100%" height={260}>
                   <BarChart data={instances} margin={{ top: 10, right: 8, left: -18, bottom: 2 }}>
-                    <CartesianGrid stroke="#e8eef2" vertical={false} />
-                    <XAxis dataKey="label" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <CartesianGrid stroke="var(--line)" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fill: 'var(--ink-3)', fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: 'var(--ink-3)', fontSize: 10 }} axisLine={false} tickLine={false} />
                     <Tooltip contentStyle={tooltipStyle} formatter={(value) => [fmtInt(value), 'Area (px)']} />
-                    <Bar dataKey="area_px" name="Area" fill="#0f766e" radius={[5, 5, 0, 0]} maxBarSize={48} />
+                    <Bar dataKey="area_px" name="Area" fill="var(--chart-primary)" radius={[5, 5, 0, 0]} maxBarSize={48} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : <div className="grid h-[260px] place-items-center text-sm text-slate-400">{analysis ? 'No petroleum-like regions detected in this image.' : 'Select an analysis to view region areas.'}</div>}
@@ -314,11 +289,11 @@ export default function AnalyticsDashboard() {
                 {instances.length > 0 ? (
                   <ResponsiveContainer width="100%" height={250}>
                     <BarChart data={instances} margin={{ top: 10, right: 8, left: -18, bottom: 2 }}>
-                      <CartesianGrid stroke="#e8eef2" vertical={false} />
-                      <XAxis dataKey="label" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+                      <CartesianGrid stroke="var(--line)" vertical={false} />
+                      <XAxis dataKey="label" tick={{ fill: 'var(--ink-3)', fontSize: 10 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fill: 'var(--ink-3)', fontSize: 10 }} axisLine={false} tickLine={false} />
                       <Tooltip contentStyle={tooltipStyle} formatter={(value) => [`${fmt(value, 1)} px`, 'Perimeter']} />
-                      <Bar dataKey="perimeter_px" name="Perimeter" fill="#0284c7" radius={[5, 5, 0, 0]} maxBarSize={48} />
+                      <Bar dataKey="perimeter_px" name="Perimeter" fill="var(--accent)" radius={[5, 5, 0, 0]} maxBarSize={48} />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : <div className="grid h-[250px] place-items-center text-sm text-slate-400">No detected regions to chart.</div>}

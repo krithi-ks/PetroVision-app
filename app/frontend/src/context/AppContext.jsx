@@ -43,6 +43,8 @@ export function AppProvider({ children }) {
   // ---- saved analyses ---------------------------------------------------------------
   const [history, setHistory] = useState({ items: [], total: 0, loaded: false })
   const [current, setCurrent] = useState(null)             // the analysis shown in Analyze / Visualize / Overview
+  const [analysisFile, setAnalysisFile] = useState(null)
+  const [analyzedFile, setAnalyzedFile] = useState(null)
   const [run, setRun] = useState({ status: 'idle', error: null, modelId: null })
   const runId = useRef(0)
 
@@ -65,13 +67,12 @@ export function AppProvider({ children }) {
   useEffect(() => {
     if (auth && (auth.loading || !auth.user)) return undefined
     refreshStatus(); refreshModels(); refreshHistory()
-    api.latest().then((l) => l.analysis && setCurrent((c) => c || l.analysis)).catch(() => {})
     const t = setInterval(refreshStatus, STATUS_POLL_MS)
     return () => clearInterval(t)
   }, [auth?.loading, auth?.user?.id, refreshStatus, refreshModels, refreshHistory])
 
   /** Run real inference on an uploaded image. The backend saves the result; we then show the saved record. */
-  const analyze = useCallback(async (file, modelId) => {
+  const analyze = useCallback(async (file, modelId, { updateCurrent = true } = {}) => {
     const id = ++runId.current
     setRun({ status: 'running', error: null, modelId })
     audio.play('scan_start')
@@ -93,7 +94,7 @@ export function AppProvider({ children }) {
       else {                                              // saving failed server-side: still show the real result
         view = { ...res, id: null, urls: { source: URL.createObjectURL(file), labels: res.mask.labels_png }, contours: res.contours || [], viz: null }
       }
-      setCurrent(view)
+      if (updateCurrent) setCurrent(view)
       setRun({ status: 'done', error: null, warning, modelId })
       audio.play('complete')
       refreshHistory(); refreshModels()
@@ -111,8 +112,9 @@ export function AppProvider({ children }) {
     muted, toggleMute, play,
     status, statusError, refreshStatus,
     models, modelsLoading, modelsError, refreshModels,
-    history, refreshHistory, current, setCurrent, openAnalysis, removeAnalysis, run, analyze,
-  }), [muted, toggleMute, play, status, statusError, refreshStatus, models, modelsLoading, modelsError, refreshModels, history, refreshHistory, current, openAnalysis, removeAnalysis, run, analyze])
+    history, refreshHistory, current, setCurrent, openAnalysis, removeAnalysis,
+    analysisFile, setAnalysisFile, analyzedFile, setAnalyzedFile, run, analyze,
+  }), [muted, toggleMute, play, status, statusError, refreshStatus, models, modelsLoading, modelsError, refreshModels, history, refreshHistory, current, openAnalysis, removeAnalysis, analysisFile, analyzedFile, run, analyze])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

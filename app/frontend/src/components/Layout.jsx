@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
 import { audio } from '../audio/AudioManager'
 import SoundControl from './SoundControl'
+import ThemeToggle from './ThemeToggle'
 import { IconChevron, IconClose, IconMenu, Logo } from './icons'
 
 const PRIMARY = [
@@ -76,6 +77,7 @@ export default function Layout() {
   const { pathname } = useLocation()
   const { status } = useApp()
   const { user, logout } = useAuth()
+
   const fullBleed = pathname === '/live'
 
   // Browsers only allow audio after a user gesture: unlock on the first interaction anywhere.
@@ -117,6 +119,7 @@ export default function Layout() {
           </nav>
           <div className="flex items-center gap-3">
             <SystemState />
+            <ThemeToggle />
             {!fullBleed && <SoundControl />}
             <MoreMenu />
             {user?.role === 'admin' && (

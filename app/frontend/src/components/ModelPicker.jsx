@@ -17,15 +17,19 @@ export default function ModelPicker({ models, value, onChange, disabled = false 
             {list.map((m) => {
               const usable = m.availability.available
               const selected = value === m.id
+              const reason = m.availability.missing_modules?.length
+                ? `Missing components: ${m.availability.missing_modules.join(', ')}`
+                : m.availability.message
               return (
                 <button key={m.id} type="button" role="radio" aria-checked={selected} disabled={disabled || !usable}
-                  onClick={() => { onChange(m.id); play('select') }}
+                  onClick={() => { onChange(m.id); play('select') }} title={!usable ? reason : undefined}
+                  aria-label={`${m.label}${!usable && reason ? `, unavailable: ${reason}` : ''}`}
                   className={`flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed ${selected ? 'bg-accent-soft' : 'bg-surface hover:bg-surface-2'}`}>
                   <span className="flex min-w-0 items-center gap-2.5">
                     <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: usable ? colorFor(m.id) : 'var(--line-strong)' }} />
                     <span className="min-w-0">
                       <span className={`block truncate text-[13px] font-medium ${usable ? 'text-ink' : 'text-ink-3'}`}>{m.label}</span>
-                      <span className="block truncate font-mono text-[10px] uppercase tracking-[0.08em] text-ink-3">{m.dataset}</span>
+                      <span className="block truncate font-mono text-[10px] uppercase tracking-[0.08em] text-ink-3">{m.dataset}{!usable && reason ? ` · ${reason}` : ''}</span>
                     </span>
                   </span>
                   <Badge kind={usable ? 'ok' : 'muted'}>{usable ? 'Available' : 'Unavailable'}</Badge>

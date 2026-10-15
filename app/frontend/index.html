@@ -7,6 +7,13 @@
     <meta name="theme-color" content="#04070d" />
     <meta name="description" content="PetroVision - petroleum contamination segmentation research and demonstration app" />
     <title>PetroVision · Petroleum Contamination Segmentation</title>
+    <script>
+      try {
+        document.documentElement.dataset.theme = localStorage.getItem('petrovision.theme') === 'dark' ? 'dark' : 'light'
+      } catch {
+        document.documentElement.dataset.theme = 'light'
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

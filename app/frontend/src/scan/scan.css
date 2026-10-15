@@ -12,6 +12,7 @@
   isolation: isolate;
 }
 .scan-stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
+.scan-captured-frame { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
 
 /* subtle vignette keeps HUD legible without hiding the camera image */
 .scan-vignette { position: absolute; inset: 0; pointer-events: none;

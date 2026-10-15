@@ -6,6 +6,7 @@ import { useApp } from '../context/AppContext'
 import { fmt, fmtInt, fmtMs, fmtPct } from '../lib/format'
 import { instanceColor } from '../lib/render'
 import { useAnalysisAssets } from '../lib/useAnalysisAssets'
+import { useTheme } from '../context/ThemeContext'
 import AnalysisViewer from '../components/AnalysisViewer'
 import { Badge, Spinner } from '../components/ui'
 
@@ -28,11 +29,12 @@ function Toggle({ label, checked, onChange }) {
 
 export default function Visualization3D() {
   const { current: view, history, openAnalysis } = useApp()
+  const { theme } = useTheme()
   const assets = useAnalysisAssets(view)
   const [gl] = useState(webglAvailable)
   const [selected, setSelected] = useState(null)
   const [resetKey, setResetKey] = useState(0)
-  const [o, setO] = useState({ heightScale: 1, photo: true, wireframe: false, contours: true, labels: true, flat: false, autoRotate: false })
+  const [o, setO] = useState({ heightScale: 1, photo: true, wireframe: false, contours: true, labels: true, flat: false, autoRotate: true })
   const sfx = useMemo(uiSoundHandlers, [])
   const set = (k) => (v) => setO((p) => ({ ...p, [k]: v }))
   const ready = view && assets.status === 'ready'
@@ -49,7 +51,7 @@ export default function Visualization3D() {
 
       <div className="grid lg:grid-cols-[1fr_330px]">
         <div className="min-w-0">
-          <div className="relative h-[560px] lg:h-[calc(100vh-56px-49px-96px)] lg:min-h-[520px]" style={{ background: 'linear-gradient(180deg,#f7f9fc 0%,#e3e9f1 100%)' }} data-testid="three-canvas">
+          <div className="visualization-canvas relative h-[560px] lg:h-[calc(100vh-56px-49px-96px)] lg:min-h-[520px]" style={{ background: theme === 'dark' ? 'radial-gradient(ellipse at 50% 20%, #18384a 0%, #0d1e2b 52%, #09141e 100%)' : 'linear-gradient(180deg,#f7f9fc 0%,#e3e9f1 100%)' }} data-testid="three-canvas">
             {!view ? (
               <div className="grid h-full place-items-center px-6 text-center">
                 <div className="grid-bg absolute inset-0 opacity-50" />
@@ -62,7 +64,7 @@ export default function Visualization3D() {
               <div className="grid h-full place-items-center text-ink-3"><Spinner /></div>
             ) : (
               <Suspense fallback={<div className="grid h-full place-items-center text-ink-3"><Spinner /></div>}>
-                <Viewer3D view={view} assets={assets} selected={selected} onSelect={(i) => { setSelected(i); audio.play('ui_select') }} o={o} resetKey={resetKey} />
+                <Viewer3D view={view} assets={assets} selected={selected} onSelect={(i) => { setSelected(i); audio.play('ui_select') }} o={o} resetKey={resetKey} dark={theme === 'dark'} />
               </Suspense>
             )}
             {view && gl && ready && <div className="pointer-events-none absolute bottom-3 left-4 font-mono text-[10.5px] uppercase tracking-[0.12em] text-ink-3">Drag · orbit &nbsp; Scroll · zoom &nbsp; Right-drag · pan</div>}

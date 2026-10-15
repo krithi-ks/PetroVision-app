@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { audio } from '../audio/AudioManager'
@@ -47,7 +47,28 @@ const MODES = [['mask', 'Mask'], ['contour', 'Contour'], ['both', 'Both']]
 
 function pickDefaultModel(models) {
   const usable = models.filter((m) => m.availability.available)
-  return (usable.find((m) => m.id === 'yolo26') || usable.find((m) => m.task === 'instance') || usable[0])?.id || null
+  return (usable.find((m) => m.id === 'yolo') || usable.find((m) => m.task === 'instance') || usable[0])?.id || null
+}
+
+async function predictionImage(frameBlob, result) {
+  const bitmap = await createImageBitmap(frameBlob)
+  try {
+    const canvas = document.createElement('canvas')
+    canvas.width = bitmap.width
+    canvas.height = bitmap.height
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Could not render the prediction evidence image.')
+    context.drawImage(bitmap, 0, 0)
+    context.drawImage(result.fillCanvas, 0, 0, bitmap.width, bitmap.height)
+    return await new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob)
+        else reject(new Error('Could not encode the prediction evidence image.'))
+      }, 'image/jpeg', 0.9)
+    })
+  } finally {
+    bitmap.close()
+  }
 }
 
 function Ribbon({ status, model, result, stats }) {
@@ -75,43 +96,46 @@ export default function Live() {
   const [modelId, setModelId] = useState(null)
   const [mode, setMode] = useState('both')
   const [show3D, setShow3D] = useState(true)
-  const [big3D, setBig3D] = useState(false)
   const [resetKey, setResetKey] = useState(0)
   const [selected, setSelected] = useState(1)
   const [save, setSave] = useState({ status: 'idle' })
-  const [telegramAlert, setTelegramAlert] = useState({
-  status: 'idle',
-  message: '',
-  })
+  const [telegramAlert, setTelegramAlert] = useState({ status: 'idle', message: '' })
+  const [telegramIntegration, setTelegramIntegration] = useState({ status: 'checking', configured: null })
   const sentIncidentIds = useRef(new Set())
+  const sendingIncidentIds = useRef(new Set())
   const [gl] = useState(webglAvailable)
   const sfx = useMemo(uiSoundHandlers, [])
 
   const live = useLiveScan({ modelId })
+  const { cameras, selectedCamera, setSelectedCamera } = live
   const {
-  cameras,
-  selectedCamera,
-  setSelectedCamera,
-} = live
-  const {
-  videoRef,
-  camera,
-  scanning,
-  status,
-  inFlight,
-  result,
-  frame,
-  stats,
-  error,
-  revealKey,
-  detection,
-  incident,
-} = live
+    videoRef,
+    camera,
+    scanning,
+    status,
+    inFlight,
+    result,
+    frame,
+    ended,
+    stoppedFrame,
+    stats,
+    error,
+    revealKey,
+    detection,
+    incident,
+  } = live
   const model = useMemo(() => models.find((m) => m.id === modelId) || null, [models, modelId])
   const available = useMemo(() => models.filter((m) => m.availability.available), [models])
 
   useEffect(() => { if (!modelId && models.length) setModelId(pickDefaultModel(models)) }, [models, modelId])
   useEffect(() => { refreshModels() }, [refreshModels, scanning])
+  useEffect(() => {
+    let active = true
+    api.telegramStatus()
+      .then((result) => { if (active) setTelegramIntegration({ status: 'ready', configured: result.configured }) })
+      .catch((err) => { if (active) setTelegramIntegration({ status: 'error', configured: null, message: err.message }) })
+    return () => { active = false }
+  }, [])
 
   // changing the model while scanning restarts the scan on the new model (loaded once, then cached)
   const restart = useRef(false)
@@ -151,10 +175,10 @@ export default function Live() {
 
   // save the current camera frame as a real, persisted analysis (the frame is analysed once more at full quality)
   const saveSnapshot = async () => {
-    const blob = live.lastBlob.current
+    const blob = live.resultBlob.current || live.lastBlob.current
     if (!blob || !modelId) return
     setSave({ status: 'saving' })
-    const view = await analyze(new File([blob], `live-scan-${Date.now()}.jpg`, { type: 'image/jpeg' }), modelId)
+    const view = await analyze(new File([blob], `live-scan-${Date.now()}.jpg`, { type: 'image/jpeg' }), modelId, { updateCurrent: false })
     setSave(view ? { status: 'saved', id: view.id } : { status: 'error' })
   }
   useEffect(() => { if (scanning) setSave({ status: 'idle' }) }, [scanning])
@@ -166,59 +190,55 @@ export default function Live() {
   const groups = [['instance', 'Instance segmentation'], ['semantic', 'Semantic segmentation']]
 
 
- useEffect(() => {
-  if (!incident?.id || !incident.frameBlob || !incident.result) return
-  if (sentIncidentIds.current.has(incident.id)) return
+  const sendIncident = useCallback(async (alertIncident) => {
+    if (!alertIncident?.alertId || !alertIncident.frameBlob || !alertIncident.result) return
+    const { alertId } = alertIncident
+    if (sentIncidentIds.current.has(alertId) || sendingIncidentIds.current.has(alertId)) return
+    sendingIncidentIds.current.add(alertId)
+    const result = alertIncident.result
+    const coverage = result.measurements?.coverage_percent
+    const inferenceMs = result.timing?.inference_ms
+    const confidences = (result.instances || []).map((item) => item.confidence).filter(Number.isFinite)
+    const maxConfidence = confidences.length ? Math.max(...confidences) : null
+    const spreading = alertIncident.type === 'spreading'
+    const summary = [
+      spreading ? 'Alert: possible spreading — image-space coverage increased.' : 'Alert: persistent visual detection.',
+      `Visual regions: ${result.instance_count}`,
+      `Current image-space coverage: ${Number.isFinite(coverage) ? `${coverage.toFixed(2)}%` : 'unavailable'}`,
+      ...(spreading ? [`Previous alert coverage: ${alertIncident.previousCoverage.toFixed(2)}%`, `Increase: +${(coverage - alertIncident.previousCoverage).toFixed(2)} percentage points`] : []),
+      `Highest model confidence: ${maxConfidence == null ? 'not reported by this model' : `${(maxConfidence * 100).toFixed(1)}%`}`,
+      `Inference time: ${Number.isFinite(inferenceMs) ? `${inferenceMs.toFixed(1)} ms` : 'unavailable'}`,
+      'Caution: visual AI indication only, not chemical confirmation. Reflections, shadows, camera motion, and other lookalikes can cause false positives; verify before taking action.',
+    ].join('\n')
 
-  sentIncidentIds.current.add(incident.id)
-
-  const result = incident.result
-  const coverage = result.measurements?.coverage_percent
-  const inferenceMs = result.timing?.inference_ms
-
-  const summary = [
-    `Visual regions detected: ${result.instance_count}`,
-    `Image-space coverage: ${
-      Number.isFinite(coverage)
-        ? `${coverage.toFixed(2)}%`
-        : 'unavailable'
-    }`,
-    `Inference time: ${
-      Number.isFinite(inferenceMs)
-        ? `${inferenceMs.toFixed(1)} ms`
-        : 'unavailable'
-    }`,
-    'Visual indication only; chemical confirmation has not been performed.',
-  ].join('\n')
-
-  setTelegramAlert({
-    status: 'sending',
-    message: 'Sending incident evidence to Telegram…',
-  })
-
-  api.sendTelegramIncident({
-    image: incident.frameBlob,
-    incidentId: incident.id,
-    timestamp: incident.timestamp,
-    modelId: incident.modelId,
-    summary,
-  })
-    .then(() => {
+    setTelegramAlert({ status: 'sending', message: `Sending ${spreading ? 'spreading' : 'detection'} evidence to Telegram…` })
+    try {
+      const predictedImage = await predictionImage(alertIncident.frameBlob, result)
+      await api.sendTelegramIncident({
+        image: alertIncident.frameBlob,
+        predictedImage,
+        incidentId: alertIncident.id,
+        timestamp: alertIncident.timestamp,
+        modelId: alertIncident.modelId,
+        alertType: alertIncident.type,
+        summary,
+      })
+      sentIncidentIds.current.add(alertId)
       setTelegramAlert({
         status: 'sent',
-        message: `Telegram alert sent for incident ${incident.id}.`,
+        message: `Telegram ${spreading ? 'spreading' : 'detection'} alert sent for incident ${alertIncident.id}.`,
       })
-    })
-    .catch((err) => {
-      setTelegramAlert({
-        status: 'error',
-        message: `Telegram alert failed: ${err.message}`,
-      })
-
+    } catch (err) {
+      setTelegramAlert({ status: 'error', message: `Telegram alert failed: ${err.message}` })
       console.error('PetroVision Telegram alert failed:', err)
-    })
-}, [incident])
+    } finally {
+      sendingIncidentIds.current.delete(alertId)
+    }
+  }, [])
 
+  useEffect(() => {
+    if (incident) void sendIncident(incident)
+  }, [incident, sendIncident])
 
   return (
     <div {...sfx}>
@@ -298,50 +318,60 @@ export default function Live() {
       {error && <div className="border-b border-line bg-surface px-4 py-2 sm:px-6"><Notice tone="error" action={<button type="button" className="btn-ghost !h-8" onClick={live.dismissError}>Dismiss</button>}>{error.message}</Notice></div>}
 
 
-      {telegramAlert.status !== 'idle' && (
-  <div
-    className="border-b border-line bg-surface px-4 py-2 sm:px-6"
-    role="status"
-    aria-live="polite"
-  >
-    <p
-      className={`text-sm ${
-        telegramAlert.status === 'error'
-          ? 'text-red-600'
-          : telegramAlert.status === 'sent'
-            ? 'text-emerald-700'
-            : 'text-ink-muted'
-      }`}
-    >
-      {telegramAlert.message}
-    </p>
-  </div>
-)}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-surface px-4 py-2 sm:px-6">
+        <p className={`text-xs ${telegramIntegration.status === 'error' || telegramIntegration.configured === false ? 'text-amber-700' : 'text-ink-3'}`} role="status">
+          {telegramIntegration.status === 'checking' ? 'Telegram alerts: checking configuration…'
+            : telegramIntegration.status === 'error' ? `Telegram configuration could not be checked: ${telegramIntegration.message}`
+              : telegramIntegration.configured ? 'Telegram alerts are configured.'
+                : 'Telegram alerts are not configured. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in the backend environment.'}
+        </p>
+        {telegramAlert.status !== 'idle' && (
+          <div className="flex flex-wrap items-center gap-3" role="status" aria-live="polite">
+            <p className={`text-xs ${telegramAlert.status === 'error' ? 'text-red-600' : telegramAlert.status === 'sent' ? 'text-emerald-700' : 'text-ink-muted'}`}>{telegramAlert.message}</p>
+            {telegramAlert.status === 'error' && incident && <button type="button" className="btn-ghost !h-7" onClick={() => sendIncident(incident)}>Retry Telegram alert</button>}
+          </div>
+        )}
+        {telegramIntegration.configured && telegramAlert.status === 'idle' && (
+          <p className="w-full text-[10px] text-ink-3">
+            Automatic alerts need 5 consecutive qualifying frames: instance models require ≥65% confidence and ≥0.1% coverage; semantic models require ≥0.5% coverage.
+          </p>
+        )}
+      </div>
 
       {/* ------------------------------------------------------------ the scanning viewport */}
       <div className="bg-surface-2">
-        <div ref={viewport} className="relative flex items-center justify-center bg-hud-bg" style={{ height: 'clamp(440px, calc(100vh - 190px), 820px)' }}>
-          <div className="scan-stage" data-lock={status === 'DETECTED'} style={{ width: fit.w || '100%', height: fit.h || '100%' }} role="region" aria-label="Live camera scan">
-            <video ref={videoRef} playsInline muted aria-label="Camera feed" style={{ opacity: camera === 'on' ? 1 : 0 }} />
-            <ScanOverlay result={result} mode={mode} selected={selected} active={scanning || status === 'DETECTED'} revealKey={revealKey} reduceMotion={reduce} width={fit.w} height={fit.h} />
-            <ScanHUD status={status} scanning={scanning} inFlight={inFlight} camera={camera} result={result} stats={stats} model={model} noModel={noModel}
-              systemReady={systemReady && !noModel} selected={selected} onSelect={setSelected} mode={mode} show3D={show3D && gl} revealKey={revealKey} reduceMotion={reduce} errorText={error?.message} />
-            {show3D && gl && camera === 'on' && (
-              <div className="absolute bottom-[56px] right-[56px] hidden md:block" style={{ width: big3D ? 'clamp(340px,46%,620px)' : 'clamp(210px,24%,330px)', transition: 'width .35s ease' }}>
-                <Suspense fallback={null}>
-                  <LiveSurface3D videoRef={videoRef} camera={camera} grid={result?.grid} instances={result?.instances} detected={detection === 'detected' && scanning}
-                    scanning={scanning} aspect={aspect} reduce={reduce} resetKey={resetKey} onReset={() => setResetKey((k) => k + 1)} expanded={big3D} onExpand={() => setBig3D((b) => !b)} />
-                </Suspense>
-              </div>
-            )}
+        <div className="grid items-start gap-3 p-2 sm:p-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(300px,0.8fr)]">
+          <div ref={viewport} className="relative flex items-center justify-center bg-hud-bg" style={{ height: 'clamp(440px, calc(100vh - 190px), 820px)' }}>
+            <div className="scan-stage" data-lock={status === 'DETECTED'} style={{ width: fit.w || '100%', height: fit.h || '100%' }} role="region" aria-label="Live camera scan">
+              <video ref={videoRef} playsInline muted aria-label="Camera feed" style={{ opacity: camera === 'on' && !ended ? 1 : 0 }} />
+              {ended && stoppedFrame && <img className="scan-captured-frame" src={stoppedFrame} alt="Captured camera frame when scan stopped" />}
+              <ScanOverlay result={result} mode={mode} selected={selected} active={scanning || status === 'DETECTED'} revealKey={revealKey} reduceMotion={reduce} width={fit.w} height={fit.h} />
+              <ScanHUD status={status} scanning={scanning} inFlight={inFlight} camera={camera} result={result} stats={stats} model={model} noModel={noModel}
+                systemReady={systemReady && !noModel} selected={selected} onSelect={setSelected} mode={mode} show3D={show3D && gl} revealKey={revealKey} reduceMotion={reduce} errorText={error?.message} />
+            </div>
+          </div>
+          <div className="flex min-w-0 flex-col gap-3">
+            <ScanResults result={result} status={status} stats={stats} scanning={scanning} selected={selected} onSelect={setSelected} model={model}
+              onSave={saveSnapshot} save={save} canSave={camera === 'on' && !!(live.resultBlob.current || live.lastBlob.current) && !!modelId && !noModel && !scanning ? true : camera === 'on' && !!result && !!modelId} />
           </div>
         </div>
-        <Ribbon status={status} model={model} result={result} stats={stats} />
+        {show3D && gl && camera === 'on' && (
+          <section className="mx-2 mb-3 flex min-h-[540px] flex-col overflow-hidden border border-cyan-800/70 bg-[#0b1b29] p-3 shadow-[0_0_28px_rgba(53,216,255,0.08)] sm:mx-4 sm:mb-4 sm:min-h-[620px]" aria-label="Live holographic mask view">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div><div className="font-mono text-[10px] uppercase tracking-[0.14em] text-cyan-200">Live holographic projection</div><p className="mt-1 text-[11px] text-cyan-100/65">Mask-derived relief, not physical depth or thickness.</p></div>
+              <button type="button" className="btn-ghost !h-8 !border-cyan-800 !bg-[#10283a] !text-cyan-100 hover:!border-cyan-400" onClick={() => setResetKey((key) => key + 1)}>Reset view</button>
+            </div>
+            <div className="min-h-[460px] flex-1">
+              <Suspense fallback={<div className="grid h-full min-h-[460px] place-items-center text-sm text-cyan-100/70"><Spinner /> Loading holographic view…</div>}>
+                <LiveSurface3D videoRef={videoRef} camera={camera} grid={result?.grid} instances={result?.instances} detected={detection === 'detected' && scanning}
+                  scanning={scanning} aspect={aspect} reduce={reduce} resetKey={resetKey} selected={selected} onSelect={setSelected} />
+              </Suspense>
+            </div>
+          </section>
+        )}
+        <div className="border-t border-line"><Ribbon status={status} model={model} result={result} stats={stats} /></div>
       </div>
 
-      {/* ------------------------------------------------------------ results under the live camera */}
-      <ScanResults result={result} status={status} stats={stats} scanning={scanning} selected={selected} onSelect={setSelected} model={model}
-        onSave={saveSnapshot} save={save} canSave={camera === 'on' && !!live.lastBlob.current && !!modelId && !noModel && !scanning ? true : camera === 'on' && !!result && !!modelId} />
       {save.status === 'saved' && save.id && <div className="border-t border-line bg-surface px-4 py-3 text-center"><Link to="/dashboard" state={{ analysisId: save.id }} className="font-mono text-[11px] uppercase tracking-[0.1em] text-accent hover:underline">View saved live scan in dashboard →</Link></div>}
 
       <div className="sr-only" aria-live="polite">{`Scan status ${STATUS_TEXT[status]}. ${instanceCount} ${instanceCount === 1 ? 'instance' : 'instances'} detected.`}</div>

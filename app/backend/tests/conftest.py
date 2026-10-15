@@ -23,7 +23,7 @@ def settings(tmp_path_factory) -> Settings:
         analyses_dir=tmp_path_factory.mktemp("analyses"),
         auth_db_path=tmp_path_factory.mktemp("auth") / "users.sqlite3",
         bootstrap_admin_email="admin@example.test",
-        bootstrap_admin_password="test-admin-password-123",
+        bootstrap_admin_password="Test-admin-password-123!",
         auth_cookie_secure=False,
     )
 

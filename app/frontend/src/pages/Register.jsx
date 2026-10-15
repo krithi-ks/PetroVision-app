@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { ApiError, api } from '../lib/api'
-
-const PASSWORD_MIN_LENGTH = 12
+import ThemeToggle from '../components/ThemeToggle'
+import { isPasswordValid, PASSWORD_MIN_LENGTH, passwordRequirements } from '../lib/passwordPolicy'
 
 export default function Register() {
   const { user, loading } = useAuth()
@@ -13,7 +13,8 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
-  const [submitted, setSubmitted] = useState(false)
+  const [submitted, setSubmitted] = useState(null)
+  const requirements = passwordRequirements(password)
 
   if (loading) return <div className="grid min-h-screen place-items-center bg-[#061522] text-sm text-cyan-50/70">Preparing secure registration…</div>
   if (user) return <Navigate to="/" replace />
@@ -25,10 +26,14 @@ export default function Register() {
       setError('The passwords do not match.')
       return
     }
+    if (!isPasswordValid(password)) {
+      setError('Meet all password requirements before requesting access.')
+      return
+    }
     setSubmitting(true)
     try {
-      await api.register({ email, password })
-      setSubmitted(true)
+      const result = await api.register({ email, password })
+      setSubmitted(result.notification_status || 'not_configured')
       setPassword('')
       setConfirmPassword('')
     } catch (err) {
@@ -40,6 +45,7 @@ export default function Register() {
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[radial-gradient(ellipse_at_50%_0%,rgba(13,148,136,0.22),transparent_45%),linear-gradient(145deg,#082b3c,#061522_60%)] px-5 py-12 text-white">
+      <ThemeToggle className="absolute right-5 top-5 z-20" />
       <div className="pointer-events-none absolute inset-0 opacity-15 [background-image:linear-gradient(rgba(165,243,252,0.15)_1px,transparent_1px),linear-gradient(90deg,rgba(165,243,252,0.15)_1px,transparent_1px)] [background-size:54px_54px] [mask-image:linear-gradient(to_bottom,black,transparent_85%)]" />
       <section className="relative z-10 w-full max-w-[460px] rounded-3xl border border-cyan-50/10 bg-[#092333]/85 p-7 shadow-[0_24px_80px_rgba(0,0,0,0.3)] backdrop-blur-xl sm:p-10">
         <Link to="/login" className="mb-10 inline-flex items-center gap-2 text-xs text-cyan-50/60 transition hover:text-white">
@@ -58,6 +64,15 @@ export default function Register() {
             </div>
             <h2 className="font-semibold text-white">Request sent for review</h2>
             <p className="mt-2 text-sm leading-6 text-cyan-50/65">Your registration is pending administrator approval. You can sign in after your access has been approved.</p>
+            {submitted === 'sent' ? (
+              <p className="mt-3 text-xs leading-5 text-teal-100">The administrator has also been notified by email.</p>
+            ) : (
+              <p role={submitted === 'failed' ? 'alert' : 'note'} className={`mt-3 text-xs leading-5 ${submitted === 'failed' ? 'text-amber-200' : 'text-cyan-50/55'}`}>
+                {submitted === 'failed'
+                  ? 'Email notification could not be delivered. Your request is saved and visible to the administrator; please contact them if urgent.'
+                  : 'Email notification is not configured. Your request is saved and visible in the administrator workspace.'}
+              </p>
+            )}
             <Link to="/login" className="mt-5 inline-flex h-10 items-center justify-center rounded-lg bg-teal-400 px-4 text-sm font-semibold text-[#04242b] transition hover:bg-teal-300">Return to sign in</Link>
           </div>
         ) : (
@@ -72,9 +87,12 @@ export default function Register() {
                 <span className="mb-2 block text-[13px] font-medium text-cyan-50/80">Create password</span>
                 <span className="relative block">
                   <input autoComplete="new-password" type={showPassword ? 'text' : 'password'} required minLength={PASSWORD_MIN_LENGTH} maxLength={1024} value={password} onChange={(event) => setPassword(event.target.value)} placeholder={`At least ${PASSWORD_MIN_LENGTH} characters`} className="h-12 w-full rounded-xl border border-white/15 bg-white/[0.06] px-4 pr-20 text-sm text-white outline-none transition placeholder:text-white/30 focus:border-teal-300 focus:ring-4 focus:ring-teal-300/10" />
-                  <button type="button" onClick={() => setShowPassword((visible) => !visible)} className="absolute inset-y-0 right-3 text-xs font-medium text-cyan-100/70 hover:text-white">{showPassword ? 'Hide' : 'Show'}</button>
+                  <button type="button" aria-pressed={showPassword} onClick={() => setShowPassword((visible) => !visible)} className="absolute inset-y-0 right-3 text-xs font-medium text-cyan-100/70 hover:text-white">{showPassword ? 'Hide' : 'Show'}</button>
                 </span>
               </label>
+              <ul aria-label="Password requirements" className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                {requirements.map(({ id, label, met }) => <li key={id} className={met ? 'text-teal-200' : 'text-cyan-50/45'}><span aria-hidden="true">{met ? '✓' : '○'}</span> {label}</li>)}
+              </ul>
               <label className="block">
                 <span className="mb-2 block text-[13px] font-medium text-cyan-50/80">Confirm password</span>
                 <input autoComplete="new-password" type={showPassword ? 'text' : 'password'} required minLength={PASSWORD_MIN_LENGTH} maxLength={1024} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Enter your password again" className="h-12 w-full rounded-xl border border-white/15 bg-white/[0.06] px-4 text-sm text-white outline-none transition placeholder:text-white/30 focus:border-teal-300 focus:ring-4 focus:ring-teal-300/10" />

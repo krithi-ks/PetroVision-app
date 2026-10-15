@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Link, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { ApiError } from '../lib/api'
+import ThemeToggle from '../components/ThemeToggle'
+import { useTheme } from '../context/ThemeContext'
 
 function OceanMark() {
   return (
@@ -15,6 +17,7 @@ function OceanMark() {
 }
 
 export default function Login() {
+  const { theme } = useTheme()
   const { user, loading, sessionError, login } = useAuth()
   const location = useLocation()
   const [email, setEmail] = useState('')
@@ -22,6 +25,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const readyToSignIn = email.trim().length > 0 && password.length > 0
 
   if (loading) return <div className="grid min-h-screen place-items-center bg-[#061522] text-sm text-cyan-50/70">Establishing secure connection…</div>
   if (user) return <Navigate to={location.state?.from?.pathname || '/'} replace />
@@ -40,8 +44,9 @@ export default function Login() {
   }
 
   return (
-    <main className="relative flex min-h-screen overflow-hidden bg-[#061522] text-white">
-      <section className="relative hidden min-h-screen flex-1 flex-col justify-between overflow-hidden px-14 py-12 lg:flex xl:px-20">
+    <main className={`login-page relative flex min-h-[100svh] overflow-x-hidden ${theme === 'dark' ? 'login-dark' : 'login-light'}`}>
+      <ThemeToggle className="absolute right-5 top-5 z-20" />
+      <section className="relative hidden min-h-[100svh] flex-1 flex-col justify-between overflow-hidden px-14 py-12 lg:flex xl:px-20">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_65%_42%,rgba(15,118,110,0.25),transparent_48%),linear-gradient(135deg,#061522_10%,#082b3c_58%,#0a4350)]" />
         <div className="pointer-events-none absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(165,243,252,0.14)_1px,transparent_1px),linear-gradient(90deg,rgba(165,243,252,0.14)_1px,transparent_1px)] [background-size:54px_54px] [mask-image:linear-gradient(to_bottom,black,transparent_88%)]" />
         <svg className="pointer-events-none absolute -bottom-5 -left-8 w-[110%] text-cyan-200/20" viewBox="0 0 1200 420" fill="none" aria-hidden="true">
@@ -78,17 +83,22 @@ export default function Login() {
         <div className="relative z-10 font-mono text-[9px] uppercase tracking-[0.14em] text-cyan-100/35">PetroVision · Secure workspace</div>
       </section>
 
-      <section className="relative flex min-h-screen w-full items-center justify-center overflow-hidden px-5 py-12 sm:px-10 lg:w-[46%] lg:flex-none lg:bg-[#f8fbfc] lg:text-slate-900 xl:w-[43%]">
+      <section className="login-form-panel relative flex min-h-[100svh] w-full items-center justify-center px-5 py-12 sm:px-10 lg:w-[46%] lg:flex-none xl:w-[43%]">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_85%_15%,rgba(20,184,166,0.16),transparent_35%),linear-gradient(145deg,#082b3c,#061522)] lg:hidden" />
+        <div className="login-mobile-motion pointer-events-none absolute right-[-76px] top-8 h-52 w-52 rounded-full border border-cyan-300/20 lg:hidden" aria-hidden="true">
+          <span className="absolute inset-5 rounded-full border border-cyan-300/15" />
+          <span className="absolute inset-12 rounded-full border border-cyan-300/10" />
+          <span className="login-mobile-orbit-dot absolute left-1/2 top-[-4px] h-2 w-2 rounded-full bg-cyan-200 shadow-[0_0_14px_#67e8f9]" />
+        </div>
         <div className="relative z-10 w-full max-w-[390px]">
           <div className="mb-10 flex items-center gap-3 lg:hidden">
             <OceanMark />
             <div className="text-lg font-semibold tracking-tight">PetroVision</div>
           </div>
           <div className="mb-8">
-            <div className="font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-teal-600 lg:text-teal-700">Secure access</div>
-            <h2 className="mt-3 text-[30px] font-semibold tracking-[-0.03em] text-white lg:text-slate-900">Welcome back</h2>
-            <p className="mt-2 text-sm text-white/60 lg:text-slate-500">Sign in to continue to your PetroVision workspace.</p>
+            <div className="font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-accent">Secure access</div>
+            <h2 className="mt-3 text-[30px] font-semibold tracking-[-0.03em] text-ink">Welcome back</h2>
+            <p className="mt-2 text-sm text-ink-2">Sign in to continue to your PetroVision workspace.</p>
           </div>
           {(error || sessionError) && (
             <div role="alert" className="mb-5 rounded-xl border border-rose-300/25 bg-rose-400/10 px-4 py-3 text-sm text-rose-100 lg:border-rose-200 lg:bg-rose-50 lg:text-rose-700">
@@ -97,20 +107,20 @@ export default function Login() {
           )}
           <form onSubmit={submit} className="space-y-5">
             <label className="block">
-              <span className="mb-2 block text-[13px] font-medium text-white/80 lg:text-slate-700">Email address</span>
+              <span className="mb-2 block text-[13px] font-medium text-ink-2">Email address</span>
               <input
                 autoComplete="username"
                 type="email"
                 required
                 maxLength={254}
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={(event) => { setEmail(event.target.value); setError('') }}
                 placeholder="you@organization.org"
-                className="h-12 w-full rounded-xl border border-white/15 bg-white/[0.06] px-4 text-sm text-white outline-none transition placeholder:text-white/30 focus:border-teal-300 focus:ring-4 focus:ring-teal-300/10 lg:border-slate-200 lg:bg-white lg:text-slate-900 lg:placeholder:text-slate-400 lg:focus:border-teal-500 lg:focus:ring-teal-500/10"
+                className="theme-input h-12 w-full rounded-xl border border-line-strong bg-surface-2 px-4 text-sm text-ink outline-none transition placeholder:text-ink-3 focus:border-accent focus:ring-4 focus:ring-accent/10"
               />
             </label>
             <label className="block">
-              <span className="mb-2 block text-[13px] font-medium text-white/80 lg:text-slate-700">Password</span>
+              <span className="mb-2 block text-[13px] font-medium text-ink-2">Password</span>
               <span className="relative block">
                 <input
                   autoComplete="current-password"
@@ -118,28 +128,32 @@ export default function Login() {
                   required
                   maxLength={1024}
                   value={password}
-                  onChange={(event) => setPassword(event.target.value)}
+                  onChange={(event) => { setPassword(event.target.value); setError('') }}
                   placeholder="Enter your password"
-                  className="h-12 w-full rounded-xl border border-white/15 bg-white/[0.06] px-4 pr-20 text-sm text-white outline-none transition placeholder:text-white/30 focus:border-teal-300 focus:ring-4 focus:ring-teal-300/10 lg:border-slate-200 lg:bg-white lg:text-slate-900 lg:placeholder:text-slate-400 lg:focus:border-teal-500 lg:focus:ring-teal-500/10"
+                  className="theme-input h-12 w-full rounded-xl border border-line-strong bg-surface-2 px-4 pr-20 text-sm text-ink outline-none transition placeholder:text-ink-3 focus:border-accent focus:ring-4 focus:ring-accent/10"
                 />
-                <button type="button" onClick={() => setShowPassword((visible) => !visible)} className="absolute inset-y-0 right-3 text-xs font-medium text-cyan-100/70 hover:text-white lg:text-teal-700 lg:hover:text-teal-900">
+                <button type="button" aria-pressed={showPassword} onClick={() => setShowPassword((visible) => !visible)} className={`absolute inset-y-0 right-3 text-xs font-medium ${theme === 'dark' ? 'text-cyan-200 hover:text-white' : 'text-teal-700 hover:text-teal-900'}`}>
                   {showPassword ? 'Hide' : 'Show'}
                 </button>
               </span>
             </label>
+            <div className="flex items-center gap-2 text-[11px] text-ink-3" role="status" aria-live="polite">
+              <span className={`h-2 w-2 rounded-full transition-colors ${readyToSignIn ? 'animate-pulse motion-reduce:animate-none bg-teal-400' : 'bg-slate-400/60'}`} />
+              {readyToSignIn ? 'Credentials ready for secure verification' : 'Enter your credentials to continue'}
+            </div>
             <button type="submit" disabled={submitting} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-teal-500 text-sm font-semibold text-[#04242b] shadow-[0_8px_24px_rgba(20,184,166,0.2)] transition hover:bg-teal-400 disabled:cursor-wait disabled:opacity-60">
               {submitting ? 'Signing in…' : 'Sign in'}
               {!submitting && <span aria-hidden="true">→</span>}
             </button>
           </form>
-          <div className="mt-7 flex items-center justify-center gap-2 text-[11px] text-white/45 lg:text-slate-400">
+          <div className="mt-7 flex items-center justify-center gap-2 text-[11px] text-ink-3">
             <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5" stroke="currentColor" /><path d="M5.5 7V4.8a2.5 2.5 0 0 1 5 0V7" stroke="currentColor" strokeLinecap="round" /></svg>
             Your session is protected by server-managed access controls.
           </div>
-          <div className="mt-10 text-center text-xs text-white/45 lg:text-slate-500">
-            Need an account? <Link to="/register" className="font-medium text-teal-200 hover:text-white lg:text-teal-700 lg:hover:text-teal-900">Request access</Link>
+          <div className="mt-10 text-center text-xs text-ink-3">
+            Need an account? <Link to="/register" className="font-medium text-accent hover:text-ink">Request access</Link>
           </div>
-          <div className="mt-5 text-center font-mono text-[9px] uppercase tracking-[0.14em] text-white/30 lg:text-slate-400">
+          <div className="mt-5 text-center font-mono text-[9px] uppercase tracking-[0.14em] text-ink-3">
             Registration is subject to administrator approval
           </div>
         </div>
