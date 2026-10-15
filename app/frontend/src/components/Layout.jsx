@@ -8,6 +8,7 @@ import { IconChevron, IconClose, IconMenu, Logo } from './icons'
 
 const PRIMARY = [
   { to: '/', label: 'Overview', end: true },
+  { to: '/dashboard', label: 'Dashboard' },
   { to: '/analyze', label: 'Analyze' },
   { to: '/live', label: 'Live Scan' },
   { to: '/results', label: 'Results' },

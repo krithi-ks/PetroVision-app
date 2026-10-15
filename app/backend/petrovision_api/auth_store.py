@@ -65,6 +65,12 @@ class AuthStore:
                         expires_at INTEGER NOT NULL
                     );
                     CREATE INDEX IF NOT EXISTS sessions_user_id ON sessions(user_id);
+                    CREATE TABLE IF NOT EXISTS registration_requests (
+                        id TEXT PRIMARY KEY,
+                        email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                        password_hash TEXT NOT NULL,
+                        requested_at INTEGER NOT NULL
+                    );
                     """
                 )
                 if self.admin_email:
@@ -163,6 +169,67 @@ class AuthStore:
         with self._connect() as db:
             rows = db.execute("SELECT * FROM users ORDER BY created_at DESC, email COLLATE NOCASE").fetchall()
         return [self._public_user(row) for row in rows]
+
+    def request_registration(self, email: str, password: str):
+        self._initialize()
+        normalized = email.strip().lower()
+        if len(normalized) > 254 or not EMAIL_RE.fullmatch(normalized):
+            raise ValueError("Enter a valid email address.")
+        if len(password) < PASSWORD_MIN_LENGTH:
+            raise ValueError(f"Password must contain at least {PASSWORD_MIN_LENGTH} characters.")
+        request_id = uuid.uuid4().hex
+        requested_at = int(time.time())
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if db.execute("SELECT 1 FROM users WHERE role = 'admin' AND is_active = 1 LIMIT 1").fetchone() is None:
+                raise RuntimeError("Registration is unavailable because no active administrator is configured.")
+            exists = db.execute(
+                "SELECT 1 FROM users WHERE email = ? UNION SELECT 1 FROM registration_requests WHERE email = ?",
+                (normalized, normalized),
+            ).fetchone()
+            if exists:
+                raise ValueError("An account or registration request with this email already exists.")
+            db.execute(
+                """INSERT INTO registration_requests (id, email, password_hash, requested_at)
+                   VALUES (?, ?, ?, ?)""",
+                (request_id, normalized, self._hash_password(password), requested_at),
+            )
+        return {"id": request_id, "email": normalized, "requested_at": requested_at}
+
+    def list_registration_requests(self):
+        self._initialize()
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT id, email, requested_at FROM registration_requests ORDER BY requested_at DESC, email COLLATE NOCASE"
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def approve_registration(self, request_id: str):
+        self._initialize()
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            request = db.execute(
+                "SELECT * FROM registration_requests WHERE id = ?", (request_id,)
+            ).fetchone()
+            if request is None:
+                return None
+            if db.execute("SELECT 1 FROM users WHERE email = ?", (request["email"],)).fetchone():
+                raise ValueError("An account with this email already exists.")
+            user_id = uuid.uuid4().hex
+            db.execute(
+                """INSERT INTO users (id, email, password_hash, role, created_at)
+                   VALUES (?, ?, ?, 'user', ?)""",
+                (user_id, request["email"], request["password_hash"], request["requested_at"]),
+            )
+            db.execute("DELETE FROM registration_requests WHERE id = ?", (request_id,))
+            row = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        return self._public_user(row)
+
+    def reject_registration(self, request_id: str):
+        self._initialize()
+        with self._connect() as db:
+            cursor = db.execute("DELETE FROM registration_requests WHERE id = ?", (request_id,))
+            return cursor.rowcount > 0
 
     def add_user(self, email: str, password: str, role: str):
         self._initialize()

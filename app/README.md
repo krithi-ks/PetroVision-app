@@ -43,9 +43,11 @@ Windows: `app\start.ps1`. Linux/macOS: `app/start.sh`.
 
 ## Authentication and access management
 
-The app requires a signed-in account. Before the first sign-in, copy `app/backend/.env.example` to `app/backend/.env` and set `PETROVISION_ADMIN_EMAIL` and `PETROVISION_ADMIN_PASSWORD` to the first administrator's email and a unique password of at least 12 characters. The first account is created once; changing those variables later does not reset an existing account. There is no public signup.
+The app requires a signed-in account. Before the first sign-in, copy `app/backend/.env.example` to `app/backend/.env` and set `PETROVISION_ADMIN_EMAIL` and `PETROVISION_ADMIN_PASSWORD` to the first administrator's email and a unique password of at least 12 characters. The first account is created once; changing those variables later does not reset an existing account. New users can request an account from the registration page; an administrator must approve each request before the account can sign in.
 
-The administrator can open **Access** in the app header to create user or admin accounts, revoke access, and restore accounts. New accounts use an administrator-chosen initial password, which should be shared privately. Revoking an account also ends its active sessions. Accounts and sessions are stored in `app/backend/data/users.sqlite3` by default; set `PETROVISION_AUTH_DB` to move the database.
+The administrator can open **Access** in the app header to review registration requests, create user or admin accounts, revoke access, and restore accounts. New accounts created by an administrator use an administrator-chosen initial password, which should be shared privately. Revoking an account also ends its active sessions. Accounts, registration requests and sessions are stored in `app/backend/data/users.sqlite3` by default; set `PETROVISION_AUTH_DB` to move the database.
+
+The **Dashboard** page summarizes saved analyses and shows the selected source image, predicted region-label image, coverage trends, model usage, inference timing and per-region pixel measurements. It uses saved model outputs; visualizations are not independent environmental measurements or ground-truth scores.
 
 For production, serve the site and API over HTTPS and set `PETROVISION_AUTH_COOKIE_SECURE=true`. Back up and restrict filesystem access to the account database, and never commit the backend `.env` file.
 

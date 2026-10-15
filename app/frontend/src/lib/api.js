@@ -50,9 +50,17 @@ export const api = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(credentials),
   }),
+  register: (credentials) => request('/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(credentials),
+  }),
   session: () => request('/api/auth/session'),
   logout: () => request('/api/auth/logout', { method: 'POST' }),
   adminUsers: () => request('/api/admin/users'),
+  registrationRequests: () => request('/api/admin/registration-requests'),
+  approveRegistration: (id) => request(`/api/admin/registration-requests/${encodeURIComponent(id)}/approve`, { method: 'POST' }),
+  rejectRegistration: (id) => request(`/api/admin/registration-requests/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   createUser: (user) => request('/api/admin/users', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

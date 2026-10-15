@@ -95,3 +95,63 @@ def test_login_explains_missing_admin_bootstrap_configuration(settings, tmp_path
     response = client.post("/api/auth/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
     assert response.status_code == 503
     assert "PETROVISION_ADMIN_EMAIL" in response.json()["detail"]
+
+
+def test_registration_requests_require_admin_approval_before_login(settings, tmp_path):
+    admin = make_client(settings, tmp_path)
+    registered_email = "new.member@example.test"
+    registered_password = "registered-password-123"
+    request = admin.post("/api/auth/register", json={
+        "email": registered_email,
+        "password": registered_password,
+    })
+    assert request.status_code == 202
+    assert "administrator must approve" in request.json()["message"].lower()
+    assert admin.post("/api/auth/login", json={
+        "email": registered_email,
+        "password": registered_password,
+    }).status_code == 401
+    assert admin.post("/api/auth/register", json={
+        "email": registered_email.upper(),
+        "password": registered_password,
+    }).status_code == 400
+
+    assert admin.post("/api/auth/login", json={
+        "email": ADMIN_EMAIL,
+        "password": ADMIN_PASSWORD,
+    }).status_code == 200
+    requests = admin.get("/api/admin/registration-requests")
+    assert requests.status_code == 200
+    assert len(requests.json()["requests"]) == 1
+    request_id = requests.json()["requests"][0]["id"]
+
+    member = make_client(settings, tmp_path)
+    assert member.post(f"/api/admin/registration-requests/{request_id}/approve").status_code == 401
+    approved = admin.post(f"/api/admin/registration-requests/{request_id}/approve")
+    assert approved.status_code == 200
+    assert approved.json()["user"]["email"] == registered_email
+    assert approved.json()["user"]["role"] == "user"
+    assert "password_hash" not in approved.text
+    assert admin.get("/api/admin/registration-requests").json()["requests"] == []
+    assert member.post("/api/auth/login", json={
+        "email": registered_email,
+        "password": registered_password,
+    }).status_code == 200
+    assert member.get("/api/status").status_code == 200
+
+
+def test_registration_request_can_be_declined(settings, tmp_path):
+    admin = make_client(settings, tmp_path)
+    request = admin.post("/api/auth/register", json={
+        "email": "declined@example.test",
+        "password": "declined-password-123",
+    })
+    assert request.status_code == 202
+    admin.post("/api/auth/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
+    request_id = admin.get("/api/admin/registration-requests").json()["requests"][0]["id"]
+    assert admin.delete(f"/api/admin/registration-requests/{request_id}").status_code == 200
+    assert admin.get("/api/admin/registration-requests").json()["requests"] == []
+    assert admin.post("/api/auth/login", json={
+        "email": "declined@example.test",
+        "password": "declined-password-123",
+    }).status_code == 401

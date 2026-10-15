@@ -25,10 +25,13 @@ function AccessPill({ active }) {
 export default function AdminUsers() {
   const { user: currentUser } = useAuth()
   const [users, setUsers] = useState([])
+  const [requests, setRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
+  const [requestError, setRequestError] = useState('')
   const [saving, setSaving] = useState(false)
   const [actionId, setActionId] = useState(null)
+  const [requestActionId, setRequestActionId] = useState(null)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
@@ -39,14 +42,16 @@ export default function AdminUsers() {
   const refresh = useCallback(async () => {
     setLoading(true)
     setLoadError('')
-    try {
-      const result = await api.adminUsers()
-      setUsers(result.users)
-    } catch (err) {
-      setLoadError(err.message || 'Could not load user accounts.')
-    } finally {
-      setLoading(false)
-    }
+    setRequestError('')
+    const [userResult, requestResult] = await Promise.allSettled([
+      api.adminUsers(),
+      api.registrationRequests(),
+    ])
+    if (userResult.status === 'fulfilled') setUsers(userResult.value.users)
+    else setLoadError(userResult.reason.message || 'Could not load user accounts.')
+    if (requestResult.status === 'fulfilled') setRequests(requestResult.value.requests)
+    else setRequestError(requestResult.reason.message || 'Could not load registration requests.')
+    setLoading(false)
   }, [])
 
   useEffect(() => { refresh() }, [refresh])
@@ -94,6 +99,27 @@ export default function AdminUsers() {
     }
   }
 
+  const reviewRequest = async (request, approve) => {
+    setRequestActionId(request.id)
+    setError('')
+    setNotice('')
+    try {
+      if (approve) {
+        const result = await api.approveRegistration(request.id)
+        setUsers((existing) => [result.user, ...existing.filter((person) => person.id !== result.user.id)])
+        setNotice(`Registration approved for ${result.user.email}. They can now sign in.`)
+      } else {
+        await api.rejectRegistration(request.id)
+        setNotice(`Registration request from ${request.email} was declined.`)
+      }
+      setRequests((existing) => existing.filter((item) => item.id !== request.id))
+    } catch (err) {
+      setError(err.message || 'Could not review this registration.')
+    } finally {
+      setRequestActionId(null)
+    }
+  }
+
   return (
     <div className="mx-auto max-w-6xl">
       <div className="mb-8 flex flex-col justify-between gap-5 border-b border-slate-200 pb-6 sm:flex-row sm:items-end">
@@ -113,7 +139,7 @@ export default function AdminUsers() {
         </div>
       </div>
 
-      <div className="mb-7 grid gap-3 sm:grid-cols-3">
+      <div className="mb-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-2xl border border-slate-200 bg-white p-5">
           <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-slate-400">Team members</div>
           <div className="mt-2 flex items-baseline gap-2"><span className="text-3xl font-semibold tracking-tight text-slate-900">{users.length}</span><span className="text-xs text-slate-400">accounts</span></div>
@@ -126,13 +152,52 @@ export default function AdminUsers() {
           <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-slate-400">Administrators</div>
           <div className="mt-2 flex items-baseline gap-2"><span className="text-3xl font-semibold tracking-tight text-slate-900">{adminCount}</span><span className="text-xs text-slate-400">active admins</span></div>
         </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-slate-400">Awaiting review</div>
+          <div className="mt-2 flex items-baseline gap-2"><span className="text-3xl font-semibold tracking-tight text-amber-600">{requests.length}</span><span className="text-xs text-slate-400">registration requests</span></div>
+        </div>
       </div>
+
+      <section className="mb-7 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.03)]">
+        <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-5 py-4 sm:px-6">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Registration requests</h2>
+            <p className="mt-1 text-xs text-slate-400">Approve a request to grant workspace access, or decline it.</p>
+          </div>
+          <span className="rounded-full bg-amber-50 px-2.5 py-1 font-mono text-[10px] font-medium text-amber-700">{requests.length} pending</span>
+        </div>
+        {loading ? (
+          <div className="px-6 py-9 text-center text-sm text-slate-400">Loading registration requests…</div>
+        ) : requests.length === 0 ? (
+          <div className="px-6 py-9 text-center text-sm text-slate-400">No registration requests to review.</div>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {requests.map((request) => (
+              <li key={request.id} className="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                <div className="flex items-center gap-3">
+                  <Avatar email={request.email} active />
+                  <div>
+                    <div className="text-sm font-medium text-slate-800">{request.email}</div>
+                    <div className="mt-1 text-xs text-slate-400">Requested {new Date(request.requested_at * 1000).toLocaleString()}</div>
+                  </div>
+                </div>
+                <div className="flex gap-2 sm:justify-end">
+                  <button type="button" disabled={requestActionId === request.id} onClick={() => reviewRequest(request, false)} className="h-9 rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-600 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50">{requestActionId === request.id ? 'Saving…' : 'Decline'}</button>
+                  <button type="button" disabled={requestActionId === request.id} onClick={() => reviewRequest(request, true)} className="h-9 rounded-lg bg-teal-700 px-3 text-xs font-medium text-white transition hover:bg-teal-800 disabled:opacity-50">{requestActionId === request.id ? 'Saving…' : 'Approve access'}</button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       {(error || notice || loadError) && (
         <div role={error || loadError ? 'alert' : 'status'} className={`mb-5 rounded-xl border px-4 py-3 text-sm ${error || loadError ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-teal-100 bg-teal-50 text-teal-800'}`}>
           {error || loadError || notice}
         </div>
       )}
+
+      {requestError && <div role="alert" className="mb-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">Could not load registration requests: {requestError}</div>}
 
       <section className="mb-7 rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.03)] sm:p-6">
         <div className="mb-5 flex items-start gap-3">

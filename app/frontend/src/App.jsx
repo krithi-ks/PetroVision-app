@@ -8,7 +8,9 @@ import Live from './pages/Live'
 import Research from './pages/Research'
 import About from './pages/About'
 import Login from './pages/Login'
+import Register from './pages/Register'
 import AdminUsers from './pages/AdminUsers'
+import AnalyticsDashboard from './pages/AnalyticsDashboard'
 import { useAuth } from './context/AuthContext'
 
 // Heavy libraries (charts, three.js) load only when their page is opened.
@@ -50,9 +52,11 @@ export default function App() {
     <Suspense fallback={<Loading />}>
       <Routes>
         <Route path="login" element={<Login />} />
+        <Route path="register" element={<Register />} />
         <Route element={<RequireAuth />}>
           <Route element={<Layout />}>
             <Route index element={<Dashboard />} />
+            <Route path="dashboard" element={<AnalyticsDashboard />} />
             <Route path="analyze" element={<Analyze />} />
             <Route path="live" element={<Live />} />
             <Route path="results" element={<Results />} />

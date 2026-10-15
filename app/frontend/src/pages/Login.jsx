@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Navigate, useLocation } from 'react-router-dom'
+import { Link, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { ApiError } from '../lib/api'
 
@@ -136,8 +136,11 @@ export default function Login() {
             <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5" stroke="currentColor" /><path d="M5.5 7V4.8a2.5 2.5 0 0 1 5 0V7" stroke="currentColor" strokeLinecap="round" /></svg>
             Your session is protected by server-managed access controls.
           </div>
-          <div className="mt-12 text-center font-mono text-[9px] uppercase tracking-[0.14em] text-white/30 lg:text-slate-400">
-            Only invited team members can access this workspace
+          <div className="mt-10 text-center text-xs text-white/45 lg:text-slate-500">
+            Need an account? <Link to="/register" className="font-medium text-teal-200 hover:text-white lg:text-teal-700 lg:hover:text-teal-900">Request access</Link>
+          </div>
+          <div className="mt-5 text-center font-mono text-[9px] uppercase tracking-[0.14em] text-white/30 lg:text-slate-400">
+            Registration is subject to administrator approval
           </div>
         </div>
       </section>
