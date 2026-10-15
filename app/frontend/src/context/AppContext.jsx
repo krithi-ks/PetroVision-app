@@ -79,12 +79,22 @@ export function AppProvider({ children }) {
       const res = await api.inferImage(file, modelId)
       if (id !== runId.current) return null
       let view
-      if (res.analysis_id) view = await api.analysis(res.analysis_id)
+      let warning = null
+      if (res.analysis_id) {
+        try {
+          view = await api.analysis(res.analysis_id)
+          if (!view) throw new Error('The saved analysis record was empty.')
+        } catch (err) {
+          if (!res.mask?.labels_png) throw err
+          warning = 'The analysis ran successfully, but its saved details could not be loaded. Showing the live inference result.'
+          view = { ...res, id: res.analysis_id, urls: { source: URL.createObjectURL(file), labels: res.mask.labels_png }, contours: res.contours || [], viz: null }
+        }
+      }
       else {                                              // saving failed server-side: still show the real result
         view = { ...res, id: null, urls: { source: URL.createObjectURL(file), labels: res.mask.labels_png }, contours: res.contours || [], viz: null }
       }
       setCurrent(view)
-      setRun({ status: 'done', error: null, modelId })
+      setRun({ status: 'done', error: null, warning, modelId })
       audio.play('complete')
       refreshHistory(); refreshModels()
       return view

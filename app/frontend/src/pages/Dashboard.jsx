@@ -1676,7 +1676,6 @@ export default function Dashboard() {
 
       <SimulatedSensorPanel latest={latest} />
       <EnvironmentalIntelligence latest={latest} />
-      <MarineEnvironmentalContext latest={latest}/>
 
     </div>
   )

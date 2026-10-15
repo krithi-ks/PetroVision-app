@@ -46,6 +46,7 @@ export async function fetchEnvironmentalData({
 
     forecast_days: '1',
     timezone: 'auto',
+    cell_selection: 'sea',
   })
 
   const weatherParams = new URLSearchParams({

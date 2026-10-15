@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fmt, fmtInt, fmtMs, fmtPct } from '../lib/format'
 import { api, ApiError } from '../lib/api'
 import { audio, SOUNDS } from '../audio/AudioManager'
-import { buildSurfaceGrid } from '../lib/labelGrid'
+import { binaryMaskPixels, buildSurfaceGrid } from '../lib/labelGrid'
 import { colorOf, regionLabel } from '../scan/palette'
 
 afterEach(() => vi.restoreAllMocks())
@@ -62,6 +62,16 @@ describe('audio manager', () => {
 })
 
 describe('scan helpers', () => {
+  it('renders every predicted label as white and the background as black', () => {
+    const pixels = binaryMaskPixels(new Uint8Array([0, 1, 2, 0]))
+    expect([...pixels]).toEqual([
+      0, 0, 0, 255,
+      255, 255, 255, 255,
+      255, 255, 255, 255,
+      0, 0, 0, 255,
+    ])
+  })
+
   it('builds a surface grid only where the real label map has instances', () => {
     const w = 40, h = 30
     const labels = new Uint8Array(w * h)

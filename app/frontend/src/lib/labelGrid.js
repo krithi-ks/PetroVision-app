@@ -26,6 +26,20 @@ export function readLabels(img) {
   return { labels, w, h }
 }
 
+/** Return opaque grayscale pixels with background black and every predicted label white. */
+export function binaryMaskPixels(labels) {
+  const pixels = new Uint8ClampedArray(labels.length * 4)
+  for (let i = 0; i < labels.length; i++) {
+    const value = labels[i] > 0 ? 255 : 0
+    const offset = i * 4
+    pixels[offset] = value
+    pixels[offset + 1] = value
+    pixels[offset + 2] = value
+    pixels[offset + 3] = 255
+  }
+  return pixels
+}
+
 /** Translucent per-instance colour fill as a canvas (drawn once per frame result). */
 export function buildFillCanvas({ labels, w, h }, palette, alpha = 0.3) {
   const canvas = document.createElement('canvas')

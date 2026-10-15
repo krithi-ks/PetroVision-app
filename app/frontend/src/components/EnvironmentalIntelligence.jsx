@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 
+import { api } from '../lib/api'
 import { fetchEnvironmentalData } from '../lib/environmentalApi'
 
 const LOCATIONS = {
@@ -64,50 +65,94 @@ function directionToCompass(degrees) {
 
 function EnvironmentalIntelligence({ latest }) {
   const [locationKey, setLocationKey] = useState('chennai')
+  const [customLocation, setCustomLocation] = useState(null)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [lastUpdated, setLastUpdated] = useState(null)
+  const [locationQuery, setLocationQuery] = useState('')
+  const [locationResults, setLocationResults] = useState([])
+  const [searching, setSearching] = useState(false)
+  const [searchError, setSearchError] = useState(null)
+  const requestId = useRef(0)
 
-  const location = LOCATIONS[locationKey]
+  const location = locationKey === 'custom'
+    ? customLocation
+    : LOCATIONS[locationKey]
 
-  const loadEnvironment = async () => {
+  const loadEnvironment = async (target = location) => {
+    if (!target) return
+    const currentRequest = ++requestId.current
     setLoading(true)
     setError(null)
+    setData(null)
 
     try {
       const result = await fetchEnvironmentalData({
-        latitude: location.latitude,
-        longitude: location.longitude,
+        latitude: target.latitude,
+        longitude: target.longitude,
       })
 
+      if (currentRequest !== requestId.current) return
       setData(result)
       setLastUpdated(new Date())
     } catch (err) {
+      if (currentRequest !== requestId.current) return
       setError(
         err?.message ||
           'Unable to load environmental conditions.',
       )
     } finally {
-      setLoading(false)
+      if (currentRequest === requestId.current) setLoading(false)
     }
   }
 
   useEffect(() => {
-    loadEnvironment()
-  }, [locationKey])
+    if (!location) return undefined
+    loadEnvironment(location)
+    return () => { requestId.current += 1 }
+  }, [location])
 
   useEffect(() => {
-    if (!autoRefresh) return
+    if (!autoRefresh || !location) return undefined
 
     const timer = setInterval(
-      loadEnvironment,
+      () => loadEnvironment(location),
       10 * 60 * 1000,
     )
 
     return () => clearInterval(timer)
-  }, [autoRefresh, locationKey])
+  }, [autoRefresh, location])
+
+  async function searchLocations() {
+    const query = locationQuery.trim()
+    if (query.length < 2) return
+    setSearching(true)
+    setSearchError(null)
+    try {
+      const result = await api.geocode(query)
+      setLocationResults(result.results || [])
+      if (!result.results?.length) setSearchError('No matching locations found.')
+    } catch (err) {
+      setLocationResults([])
+      setSearchError(err.message || 'Location search is unavailable.')
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  function chooseLocation(result) {
+    setCustomLocation({
+      label: [result.name, result.admin1, result.country].filter(Boolean).join(', '),
+      latitude: Number(result.latitude),
+      longitude: Number(result.longitude),
+    })
+    setLocationKey('custom')
+    setLocationResults([])
+    setLocationQuery('')
+    setSearchError(null)
+  }
 
   const cvDetected = Boolean(
     latest &&
@@ -218,12 +263,17 @@ function EnvironmentalIntelligence({ latest }) {
             <option value="singapore">
               Singapore
             </option>
+            {customLocation && (
+              <option value="custom">
+                {customLocation.label}
+              </option>
+            )}
 
           </select>
 
           <button
             type="button"
-            onClick={loadEnvironment}
+            onClick={() => loadEnvironment(location)}
             disabled={loading}
             className="btn-ghost"
           >
@@ -232,6 +282,52 @@ function EnvironmentalIntelligence({ latest }) {
 
         </div>
 
+      </div>
+
+      <div className="border-b border-line px-5 py-4">
+        <label htmlFor="environment-location-search" className="label">
+          Search a coastal or marine location
+        </label>
+        <div className="mt-2 flex gap-2">
+          <input
+            id="environment-location-search"
+            value={locationQuery}
+            onChange={(event) => setLocationQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                searchLocations()
+              }
+            }}
+            placeholder="City, coastline, or island"
+            className="min-w-0 flex-1 rounded-lg border border-line-strong bg-white px-3 py-2 text-sm text-ink outline-none focus:border-ink"
+          />
+          <button
+            type="button"
+            onClick={searchLocations}
+            disabled={searching || locationQuery.trim().length < 2}
+            className="btn-ghost disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {searching ? 'Searching…' : 'Search'}
+          </button>
+        </div>
+        {searchError && <p role="alert" className="mt-2 text-xs text-red-700">{searchError}</p>}
+        {locationResults.length > 0 && (
+          <ul className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-line">
+            {locationResults.map((result, index) => (
+              <li key={`${result.latitude}-${result.longitude}-${index}`}>
+                <button
+                  type="button"
+                  onClick={() => chooseLocation(result)}
+                  className="w-full border-b border-line px-3 py-2 text-left last:border-b-0 hover:bg-panel"
+                >
+                  <span className="block text-sm font-medium text-ink">{result.name}</span>
+                  <span className="block text-xs text-ink-3">{[result.admin1, result.country].filter(Boolean).join(', ')}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {/* 3D SCENE */}
@@ -380,9 +476,9 @@ function EnvironmentalIntelligence({ latest }) {
             </div>
 
             <div className="mt-1 font-mono text-[10px] text-ink-3">
-              {location.latitude.toFixed(4)}°
+              {Math.abs(location.latitude).toFixed(4)}° {location.latitude < 0 ? 'S' : 'N'}
               {' '}
-              {location.longitude.toFixed(4)}°
+              {Math.abs(location.longitude).toFixed(4)}° {location.longitude < 0 ? 'W' : 'E'}
             </div>
 
           </div>

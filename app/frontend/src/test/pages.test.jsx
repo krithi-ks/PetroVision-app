@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { AppProvider } from '../context/AppContext'
+import { audio } from '../audio/AudioManager'
 import Analyze from '../pages/Analyze'
 import Results from '../pages/Results'
 import Live from '../pages/Live'
@@ -59,7 +60,25 @@ function mockFetch({ history = [], latest = null, overrides = {} } = {}) {
     if (u === '/api/models') return respond(MODELS)
     if (u.startsWith('/api/history?')) return respond({ items: history, total: history.length })
     if (u === '/api/history/latest') return respond({ analysis: latest })
+    if (u.startsWith('/api/geocode?')) return respond({ results: [{ name: 'Port Louis', admin1: 'Port Louis District', country: 'Mauritius', latitude: -20.16, longitude: 57.50 }] })
     if (u === `/api/history/${ANALYSIS.id}`) return respond(ANALYSIS)
+    if (u.startsWith('https://marine-api.open-meteo.com/')) return respond({
+      hourly: {
+        time: ['2026-10-15T12:00'],
+        wave_height: [1.2],
+        wave_direction: [180],
+        ocean_current_velocity: [0.4],
+        ocean_current_direction: [90],
+        sea_surface_temperature: [25],
+      },
+      hourly_units: { wave_height: 'm', wave_direction: '°', ocean_current_velocity: 'm/s', sea_surface_temperature: '°C' },
+      timezone: 'Indian/Mauritius',
+    })
+    if (u.startsWith('https://api.open-meteo.com/')) return respond({
+      current: { wind_speed_10m: 12, wind_direction_10m: 90 },
+      current_units: { wind_speed_10m: 'km/h' },
+      timezone: 'Indian/Mauritius',
+    })
     if (u === '/api/results/comparison') return respond(COMPARISON)
     if (u === '/api/results/dekerf') return respond(DEKERF)
     if (u === '/api/results/summary') return respond({ source: 's', methodology: { test_images: 343, image_size: '256x256' }, limitations: ['Limit one'] })
@@ -103,6 +122,38 @@ describe('Analyze workspace', () => {
     expect(screen.getByText('24.68%')).toBeTruthy()
     expect(infer).toHaveBeenCalledOnce()
     expect(document.body.textContent).not.toMatch(/\bIoU\b|\bDice\b|Recall/)   // no ground-truth metrics for live output
+  })
+
+  it('runs analysis independently of browser audio permissions', async () => {
+    const infer = vi.fn(async () => respond({ analysis_id: ANALYSIS.id }))
+    const unlock = vi.spyOn(audio, 'unlock').mockRejectedValue(new Error('Audio is unavailable'))
+    mockFetch({ overrides: { '/api/infer/image': infer } })
+    wrap(<Analyze />)
+    await screen.findByText('U-Net')
+    fireEvent.change(screen.getByTestId('file-input'), { target: { files: [new File(['x'], 'a.png', { type: 'image/png' })] } })
+    fireEvent.click(screen.getByRole('button', { name: /Run analysis/ }))
+    await screen.findByText('Instance 01')
+    expect(infer).toHaveBeenCalledOnce()
+    expect(unlock).not.toHaveBeenCalled()
+  })
+
+  it('shows the real inference result if reloading its saved record fails', async () => {
+    const infer = vi.fn(async () => respond({
+      ...ANALYSIS,
+      analysis_id: ANALYSIS.id,
+      mask: { ...ANALYSIS.mask, labels_png: 'data:image/png;base64,AA==' },
+    }))
+    mockFetch({ overrides: {
+      '/api/infer/image': infer,
+      [`/api/history/${ANALYSIS.id}`]: async () => respond({ detail: 'temporarily unavailable' }, 503),
+    } })
+    wrap(<Analyze />)
+    await screen.findByText('U-Net')
+    fireEvent.change(screen.getByTestId('file-input'), { target: { files: [new File(['x'], 'a.png', { type: 'image/png' })] } })
+    fireEvent.click(screen.getByRole('button', { name: /Run analysis/ }))
+    expect(await screen.findByText('Analysis completed with limited details')).toBeTruthy()
+    expect(screen.getByText('Instance 01')).toBeTruthy()
+    expect(infer).toHaveBeenCalledOnce()
   })
 
   it('lets the user change models and run the same uploaded image again', async () => {
@@ -194,7 +245,7 @@ describe('Analytics dashboard', () => {
     mockFetch({ history: [HISTORY_ITEM], latest: ANALYSIS })
     wrap(<AnalyticsDashboard />)
     await screen.findByText('Source image')
-    expect(screen.getByText('Predicted regions')).toBeTruthy()
+    expect(screen.getByText('Predicted mask · black and white')).toBeTruthy()
     expect(screen.getByText('Prediction overlay')).toBeTruthy()
     expect(screen.getByText('Region perimeter')).toBeTruthy()
     expect(screen.getByText('Inference speed')).toBeTruthy()
@@ -216,6 +267,30 @@ describe('Overview', () => {
     wrap(<Dashboard />)
     await screen.findByText('Latest analysis')
     await waitFor(() => expect(screen.getAllByText(/24\.68|20\.5/).length).toBeGreaterThan(0), { timeout: 3000 })
+  })
+
+  it('uses a searched location for the marine ecosystem and requests sea conditions', async () => {
+    mockFetch()
+    const requests = globalThis.fetch
+    wrap(<Dashboard />)
+
+    const search = screen.getByLabelText('Search a coastal or marine location')
+    fireEvent.change(search, { target: { value: 'Port Louis' } })
+    fireEvent.keyDown(search, { key: 'Enter' })
+    fireEvent.click(await screen.findByRole('button', { name: /Port Louis/ }))
+
+    expect((await screen.findAllByText('Port Louis, Port Louis District, Mauritius')).length).toBeGreaterThan(0)
+    await waitFor(() => {
+      const marineRequest = requests.mock.calls
+        .map(([url]) => String(url))
+        .find((url) => url.startsWith('https://marine-api.open-meteo.com/') && url.includes('latitude=-20.16'))
+      expect(marineRequest).toBeTruthy()
+      expect(marineRequest).toContain('latitude=-20.16')
+      expect(marineRequest).toContain('longitude=57.5')
+      expect(marineRequest).toContain('cell_selection=sea')
+    })
+    expect(screen.getByText(/20\.1600° S/)).toBeTruthy()
+    expect(screen.getByText(/57\.5000° E/)).toBeTruthy()
   })
 })
 

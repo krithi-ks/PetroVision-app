@@ -109,7 +109,6 @@ export default function Analyze() {
 
   const execute = async () => {
     if (!file || !modelId) return
-    await audio.unlock()
     const result = await analyze(file, modelId)
     if (result) setAnalyzedFile(file)
   }
@@ -166,6 +165,7 @@ export default function Analyze() {
           {/* ---------------- instances + metrics ---------------- */}
           <div className="border-t border-line bg-surface-2/60 px-4 py-3">
             {run.status === 'error' && run.error && <Notice tone="error" className="mb-3" title="Analysis could not be completed">{run.error.message}</Notice>}
+            {run.status === 'done' && run.warning && <Notice tone="warn" className="mb-3" title="Analysis completed with limited details">{run.warning}</Notice>}
             {view?.id && !showPreview && !running && <Link to="/dashboard" state={{ analysisId: view.id }} className="mb-3 inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.1em] text-accent hover:underline">View this analysis in dashboard →</Link>}
             {view && !showPreview ? (
               <div className="flex gap-3 overflow-x-auto pb-1">

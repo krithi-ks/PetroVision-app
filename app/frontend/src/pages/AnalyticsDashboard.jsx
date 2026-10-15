@@ -18,7 +18,7 @@ import { api } from '../lib/api'
 import { fmt, fmtInt, fmtMs, fmtPct } from '../lib/format'
 import { colorFor } from '../lib/models'
 import { Badge, Notice, Skeleton } from '../components/ui'
-import { buildFillCanvas } from '../lib/labelGrid'
+import { binaryMaskPixels, buildFillCanvas } from '../lib/labelGrid'
 import { useAnalysisAssets } from '../lib/useAnalysisAssets'
 
 const tooltipStyle = { background: '#fff', border: '1px solid #cbd5e1', borderRadius: 12, fontSize: 12 }
@@ -78,6 +78,41 @@ function OverlayPreview({ analysis, assets }) {
       <div className="border-b border-slate-200 px-3 py-2 font-mono text-[9px] uppercase tracking-[0.12em] text-slate-500">Prediction overlay</div>
       {overlay ? <img src={overlay} alt="Original image with predicted petroleum regions overlaid" className="h-[250px] w-full object-contain" />
         : <div className="grid h-[250px] place-items-center text-xs text-slate-400">{assets.status === 'error' ? 'Overlay unavailable.' : 'Preparing overlay…'}</div>}
+    </figure>
+  )
+}
+
+function PredictedMaskPreview({ analysis, assets }) {
+  const [mask, setMask] = useState('')
+
+  useEffect(() => {
+    if (!analysis || assets.status !== 'ready' || !assets.lab) {
+      setMask('')
+      return undefined
+    }
+
+    const { labels, w, h } = assets.lab
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const context = canvas.getContext('2d')
+    if (!context) {
+      setMask('')
+      return undefined
+    }
+
+    const imageData = context.createImageData(w, h)
+    imageData.data.set(binaryMaskPixels(labels))
+    context.putImageData(imageData, 0, 0)
+    setMask(canvas.toDataURL('image/png'))
+    return undefined
+  }, [analysis?.id, assets])
+
+  return (
+    <figure className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+      <div className="border-b border-slate-200 px-3 py-2 font-mono text-[9px] uppercase tracking-[0.12em] text-slate-500">Predicted mask · black and white</div>
+      {mask ? <img src={mask} alt="Binary predicted mask: black background and white predicted regions" className="h-[250px] w-full object-contain [image-rendering:pixelated]" />
+        : <div className="grid h-[250px] place-items-center text-xs text-slate-400">{assets.status === 'error' ? 'Mask unavailable.' : 'Preparing mask…'}</div>}
     </figure>
   )
 }
@@ -206,10 +241,7 @@ export default function AnalyticsDashboard() {
                     <div className="border-b border-slate-200 px-3 py-2 font-mono text-[9px] uppercase tracking-[0.12em] text-slate-500">Source image</div>
                     <img src={analysis.urls.source} alt={`Analysed source image: ${analysis.image?.filename || 'saved scan'}`} className="h-[250px] w-full object-contain" />
                   </figure>
-                  <figure className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                    <div className="border-b border-slate-200 px-3 py-2 font-mono text-[9px] uppercase tracking-[0.12em] text-slate-500">Predicted regions</div>
-                    <img src={analysis.urls.labels} alt="Model-predicted petroleum region labels" className="h-[250px] w-full object-contain [image-rendering:pixelated]" />
-                  </figure>
+                  <PredictedMaskPreview analysis={analysis} assets={analysisAssets} />
                   <OverlayPreview analysis={analysis} assets={analysisAssets} />
                 </div>
               )}
