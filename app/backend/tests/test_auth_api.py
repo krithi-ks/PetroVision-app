@@ -22,6 +22,8 @@ def make_client(settings, tmp_path, *, configured=True):
 
 def test_api_requires_a_valid_session_and_sets_http_only_cookie(settings, tmp_path):
     client = make_client(settings, tmp_path)
+    session = client.get("/api/auth/session")
+    assert session.status_code == 200 and session.json() == {"user": None}
     assert client.get("/api/status").status_code == 401
     assert client.get("/api/admin/users").status_code == 401
 

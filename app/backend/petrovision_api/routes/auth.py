@@ -79,8 +79,8 @@ def login(payload: LoginRequest, request: Request, response: Response):
 
 
 @router.get("/auth/session")
-def current_session(user=Depends(require_user)):
-    return {"user": user}
+def current_session(request: Request):
+    return {"user": _session_user(request)}
 
 
 @router.post("/auth/register", status_code=202)
