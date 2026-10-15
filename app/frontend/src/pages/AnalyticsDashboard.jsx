@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import {
   Area,
   AreaChart,
@@ -18,6 +18,8 @@ import { api } from '../lib/api'
 import { fmt, fmtInt, fmtMs, fmtPct } from '../lib/format'
 import { colorFor } from '../lib/models'
 import { Badge, Notice, Skeleton } from '../components/ui'
+import { buildFillCanvas } from '../lib/labelGrid'
+import { useAnalysisAssets } from '../lib/useAnalysisAssets'
 
 const tooltipStyle = { background: '#fff', border: '1px solid #cbd5e1', borderRadius: 12, fontSize: 12 }
 const chartColors = ['#0f766e', '#0284c7', '#6366f1', '#f59e0b', '#e11d48', '#64748b']
@@ -53,7 +55,35 @@ function DetailMetric({ label, value, unit }) {
   )
 }
 
+function OverlayPreview({ analysis, assets }) {
+  const [overlay, setOverlay] = useState('')
+  useEffect(() => {
+    if (!analysis || assets.status !== 'ready' || !assets.img || !assets.lab) {
+      setOverlay('')
+      return undefined
+    }
+    const canvas = document.createElement('canvas')
+    canvas.width = assets.img.naturalWidth
+    canvas.height = assets.img.naturalHeight
+    const context = canvas.getContext('2d')
+    if (!context) return undefined
+    context.drawImage(assets.img, 0, 0, canvas.width, canvas.height)
+    context.drawImage(buildFillCanvas(assets.lab, ['#ef4444'], 0.45), 0, 0, canvas.width, canvas.height)
+    setOverlay(canvas.toDataURL('image/png'))
+    return undefined
+  }, [analysis?.id, assets])
+
+  return (
+    <figure className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+      <div className="border-b border-slate-200 px-3 py-2 font-mono text-[9px] uppercase tracking-[0.12em] text-slate-500">Prediction overlay</div>
+      {overlay ? <img src={overlay} alt="Original image with predicted petroleum regions overlaid" className="h-[250px] w-full object-contain" />
+        : <div className="grid h-[250px] place-items-center text-xs text-slate-400">{assets.status === 'error' ? 'Overlay unavailable.' : 'Preparing overlay…'}</div>}
+    </figure>
+  )
+}
+
 export default function AnalyticsDashboard() {
+  const location = useLocation()
   const [history, setHistory] = useState([])
   const [selectedId, setSelectedId] = useState('')
   const [analysis, setAnalysis] = useState(null)
@@ -67,7 +97,7 @@ export default function AnalyticsDashboard() {
     api.history(300).then((result) => {
       if (!active) return
       setHistory(result.items)
-      setSelectedId((current) => current || result.items[0]?.id || '')
+      setSelectedId((current) => location.state?.analysisId || current || result.items[0]?.id || '')
     }).catch((err) => {
       if (active) setError(err.message || 'Could not load saved analyses.')
     }).finally(() => {
@@ -118,6 +148,7 @@ export default function AnalyticsDashboard() {
     ...item,
     label: `${item.kind === 'instance' ? 'Inst.' : 'Region'} ${item.id}`,
   })), [analysis])
+  const analysisAssets = useAnalysisAssets(analysis)
   const measurements = analysis?.measurements
   const averageCoverage = history.length
     ? history.reduce((sum, item) => sum + (Number(item.coverage_percent) || 0), 0) / history.length
@@ -170,15 +201,16 @@ export default function AnalyticsDashboard() {
               </div>
               {analysisError && <Notice tone="error" title="Analysis unavailable">{analysisError}</Notice>}
               {analysisLoading ? <Skeleton className="h-[270px]" /> : analysis?.urls && (
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3 md:grid-cols-3">
                   <figure className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
                     <div className="border-b border-slate-200 px-3 py-2 font-mono text-[9px] uppercase tracking-[0.12em] text-slate-500">Source image</div>
                     <img src={analysis.urls.source} alt={`Analysed source image: ${analysis.image?.filename || 'saved scan'}`} className="h-[250px] w-full object-contain" />
                   </figure>
                   <figure className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                    <div className="border-b border-slate-200 px-3 py-2 font-mono text-[9px] uppercase tracking-[0.12em] text-slate-500">Predicted region labels</div>
+                    <div className="border-b border-slate-200 px-3 py-2 font-mono text-[9px] uppercase tracking-[0.12em] text-slate-500">Predicted regions</div>
                     <img src={analysis.urls.labels} alt="Model-predicted petroleum region labels" className="h-[250px] w-full object-contain [image-rendering:pixelated]" />
                   </figure>
+                  <OverlayPreview analysis={analysis} assets={analysisAssets} />
                 </div>
               )}
               {analysis && (
@@ -187,6 +219,9 @@ export default function AnalyticsDashboard() {
                   <DetailMetric label="Petroleum pixels" value={fmtInt(measurements?.petroleum_pixels)} />
                   <DetailMetric label="Regions" value={fmtInt(analysis.instance_count)} />
                   <DetailMetric label="Image dimensions" value={`${analysis.image?.width} × ${analysis.image?.height}`} unit="px" />
+                  <DetailMetric label="Analysis source" value={analysis.image?.filename?.startsWith('live-scan-') ? 'Live camera' : 'Uploaded image'} />
+                  <DetailMetric label="Perimeter" value={fmt(measurements?.perimeter_px, 1)} unit="px" />
+                  <DetailMetric label="Inference speed" value={analysis.timing?.inference_ms > 0 ? fmt(1000 / analysis.timing.inference_ms, 2) : null} unit="images/s" />
                 </div>
               )}
             </ChartPanel>
@@ -242,6 +277,24 @@ export default function AnalyticsDashboard() {
           </div>
 
           {analysis && (
+            <div className="mb-5">
+              <ChartPanel title="Region perimeter" subtitle="Image-space boundary length for each detected region.">
+                {instances.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={250}>
+                    <BarChart data={instances} margin={{ top: 10, right: 8, left: -18, bottom: 2 }}>
+                      <CartesianGrid stroke="#e8eef2" vertical={false} />
+                      <XAxis dataKey="label" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+                      <Tooltip contentStyle={tooltipStyle} formatter={(value) => [`${fmt(value, 1)} px`, 'Perimeter']} />
+                      <Bar dataKey="perimeter_px" name="Perimeter" fill="#0284c7" radius={[5, 5, 0, 0]} maxBarSize={48} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : <div className="grid h-[250px] place-items-center text-sm text-slate-400">No detected regions to chart.</div>}
+              </ChartPanel>
+            </div>
+          )}
+
+          {analysis && (
             <div className="mb-5 grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
               <ChartPanel title="Analysis measurements" subtitle="Values from the selected model output. Coordinates are in image pixels.">
                 <div className="grid grid-cols-2 gap-2">
@@ -261,13 +314,14 @@ export default function AnalyticsDashboard() {
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[620px] text-left text-xs">
                       <thead><tr className="border-b border-slate-100 font-mono text-[9px] uppercase tracking-[0.12em] text-slate-400">
-                        <th className="py-2.5 pr-3 font-medium">Region</th><th className="px-3 py-2.5 font-medium">Class</th><th className="px-3 py-2.5 text-right font-medium">Area</th><th className="px-3 py-2.5 text-right font-medium">Coverage</th><th className="px-3 py-2.5 text-right font-medium">Confidence</th><th className="py-2.5 pl-3 text-right font-medium">Centroid</th>
+                        <th className="py-2.5 pr-3 font-medium">Region</th><th className="px-3 py-2.5 font-medium">Class</th><th className="px-3 py-2.5 text-right font-medium">Area</th><th className="px-3 py-2.5 text-right font-medium">Perimeter</th><th className="px-3 py-2.5 text-right font-medium">Coverage</th><th className="px-3 py-2.5 text-right font-medium">Confidence</th><th className="py-2.5 pl-3 text-right font-medium">Centroid</th>
                       </tr></thead>
                       <tbody className="divide-y divide-slate-100">
                         {instances.map((item) => <tr key={item.index}>
                           <td className="py-3 pr-3 font-medium text-slate-800">{item.label}</td>
                           <td className="px-3 py-3 text-slate-500">{item.class_name || 'Petroleum-like'}</td>
                           <td className="px-3 py-3 text-right font-mono text-slate-700">{fmtInt(item.area_px)} px</td>
+                          <td className="px-3 py-3 text-right font-mono text-slate-700">{fmt(item.perimeter_px, 1)} px</td>
                           <td className="px-3 py-3 text-right font-mono text-slate-700">{fmtPct(item.coverage_percent)}</td>
                           <td className="px-3 py-3 text-right font-mono text-slate-700">{item.confidence == null ? '—' : fmt(item.confidence, 3)}</td>
                           <td className="py-3 pl-3 text-right font-mono text-slate-700">{item.centroid ? `${fmt(item.centroid.x, 0)}, ${fmt(item.centroid.y, 0)}` : '—'}</td>

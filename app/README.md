@@ -9,18 +9,18 @@ app/
 └── frontend/   React + Vite + Tailwind + React Three Fiber
 ```
 
-## What it reuses from the repository (nothing is duplicated)
+## Training assets and inference sources
 
 | Need | Source |
 |---|---|
-| U-Net architecture | `src/vision/unet.py` (imported, not copied) |
+| U-Net architecture | `app/backend/petrovision_api/inference/unet.py` (matches the saved CV-UNET-001 checkpoint) |
 | Preprocessing | mirrors `src/vision/lados_dataset.py`: RGB → bilinear 256×256 → `/255`, no ImageNet normalisation |
 | Checkpoints | `models/cv_unet_001_best.pt`, `cv_segformer_001_best.pt`, `cv_yolo_001_best.pt` (+ DeepLab / Mask2Former / YOLO26, see below) |
 | DeepLabV3+ / SegFormer / Mask2Former / YOLO definitions | rebuilt exactly as in the fine-tuning notebooks (`smp.DeepLabV3Plus('resnet50')`, `SegformerForSemanticSegmentation` B0 config with `num_labels=1`, `Mask2FormerForUniversalSegmentation` with `num_labels=2`, Ultralytics `YOLO`) |
 | Decision rules | sigmoid ≥ 0.5; Mask2Former class id 1; YOLO `imgsz=640, conf=0.25, retina_masks=True`, instances merged |
 | Research numbers | `results/cv_final_model_comparison.csv`, `cv_inference_benchmark.json`, `cv_master_summary.json`, `*/training_history.json`, `cv_yolo_001/results.csv` |
 
-Existing files in `src/`, `models/`, `results/`, `notebooks/` are **not modified**.
+Existing files in `src/`, `models/`, `results/`, and `notebooks/` are **not modified**.
 
 ## Quick start
 
@@ -47,13 +47,13 @@ The app requires a signed-in account. Before the first sign-in, copy `app/backen
 
 The administrator can open **Access** in the app header to review registration requests, create user or admin accounts, revoke access, and restore accounts. New accounts created by an administrator use an administrator-chosen initial password, which should be shared privately. Revoking an account also ends its active sessions. Accounts, registration requests and sessions are stored in `app/backend/data/users.sqlite3` by default; set `PETROVISION_AUTH_DB` to move the database.
 
-The **Dashboard** page summarizes saved analyses and shows the selected source image, predicted region-label image, coverage trends, model usage, inference timing and per-region pixel measurements. It uses saved model outputs; visualizations are not independent environmental measurements or ground-truth scores.
+The **Dashboard** page summarizes saved analyses and shows each selected source image, predicted regions, a source-image overlay, coverage trends, model usage, inference speed, timing, perimeter charts and per-region measurements. Upload analyses and saved live-scan snapshots can be opened there from their respective pages. It uses saved model outputs; visualizations are not independent environmental measurements or ground-truth scores.
 
 For production, serve the site and API over HTTPS and set `PETROVISION_AUTH_COOKIE_SECURE=true`. Back up and restrict filesystem access to the account database, and never commit the backend `.env` file.
 
 ## YOLO26n-Seg (De Kerf) slot
 
-The repository does not contain a YOLO26 checkpoint or experiment results, so the app shows **YOLO26n-Seg as unavailable** until the file exists. Put it at `models/cv_yolo26_001_best.pt` (any file matching `cv_yolo26*_best.pt` / `*yolo26*best.pt` anywhere under `models/` is found automatically) or set `PETROVISION_CKPT_YOLO26`. The inference image size is read from the checkpoint. If the model has several classes, choose which count as petroleum-like with `PETROVISION_YOLO26_CLASSES=oil` (default: all instances).
+When no YOLO26 checkpoint is installed, the app shows **YOLO26n-Seg as unavailable**. Put the trained checkpoint at `models/cv_yolo26_001_best.pt` (any file matching `cv_yolo26*_best.pt` / `*yolo26*best.pt` anywhere under `models/` is found automatically) or set `PETROVISION_CKPT_YOLO26`. The inference image size is read from the checkpoint. YOLO26 requires Ultralytics 8.4 or newer. If the model has several classes, choose which count as petroleum-like with `PETROVISION_YOLO26_CLASSES=oil` (default: all instances). The checkpoint was trained on De Kerf drone imagery, so results may vary on other scene types.
 Live Scan selects YOLO26 by default as soon as it is available.
 
 ## Where did the app look for my models?
@@ -96,7 +96,7 @@ GPU is used automatically when CUDA is available (`PETROVISION_DEVICE=cpu|cuda|a
 
 ## YOLO26n-Seg (De Kerf)
 
-The backend registers `YOLO26n-Seg` and loads it automatically when its checkpoint exists — `models/cv_yolo26_001_best.pt` (any `*yolo26*best.pt` under `models/` is also found), or set `PETROVISION_CKPT_YOLO26`. Its image size is read from the checkpoint. If the model has classes other than the contamination class, set `PETROVISION_YOLO26_CLASSES=oil` (comma-separated class names) so only those count as petroleum-like. Until the checkpoint is present the model simply shows as *Unavailable*. Its experiment results are not shown anywhere until result files for it exist.
+The backend registers `YOLO26n-Seg` and loads it automatically when its checkpoint exists — `models/cv_yolo26_001_best.pt` (any `*yolo26*best.pt` under `models/` is also found), or set `PETROVISION_CKPT_YOLO26`. Its image size is read from the checkpoint. If the model has classes other than the contamination class, set `PETROVISION_YOLO26_CLASSES=oil` (comma-separated class names) so only those count as petroleum-like. Until the checkpoint is present the model shows as *Unavailable*. Its live predictions appear in analysis history and the Dashboard when an analysis or live-scan snapshot is saved.
 
 ## API
 

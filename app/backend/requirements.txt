@@ -13,7 +13,7 @@ torchvision>=0.17
 transformers>=4.40            # SegFormer-B0, Mask2Former
 scipy>=1.11                    # Mask2Former loss and matching support
 segmentation-models-pytorch   # DeepLabV3+ (ResNet-50)
-ultralytics>=8.3              # YOLO11n-Seg
+ultralytics>=8.4              # YOLO11n-Seg and YOLO26n-Seg
 # tests
 pytest>=8
 httpx>=0.27

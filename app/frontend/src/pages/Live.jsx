@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { audio } from '../audio/AudioManager'
 import { uiSoundHandlers } from '../audio/uiSounds'
@@ -339,8 +340,9 @@ export default function Live() {
       </div>
 
       {/* ------------------------------------------------------------ results under the live camera */}
-      <ScanResults result={result} status={status} stats={stats} scanning={scanning} selected={selected} onSelect={setSelected}
+      <ScanResults result={result} status={status} stats={stats} scanning={scanning} selected={selected} onSelect={setSelected} model={model}
         onSave={saveSnapshot} save={save} canSave={camera === 'on' && !!live.lastBlob.current && !!modelId && !noModel && !scanning ? true : camera === 'on' && !!result && !!modelId} />
+      {save.status === 'saved' && save.id && <div className="border-t border-line bg-surface px-4 py-3 text-center"><Link to="/dashboard" state={{ analysisId: save.id }} className="font-mono text-[11px] uppercase tracking-[0.1em] text-accent hover:underline">View saved live scan in dashboard →</Link></div>}
 
       <div className="sr-only" aria-live="polite">{`Scan status ${STATUS_TEXT[status]}. ${instanceCount} ${instanceCount === 1 ? 'instance' : 'instances'} detected.`}</div>
     </div>

@@ -7,6 +7,8 @@ import Results from '../pages/Results'
 import Live from '../pages/Live'
 import Visualization3D from '../pages/Visualization3D'
 import Dashboard from '../pages/Dashboard'
+import AnalyticsDashboard from '../pages/AnalyticsDashboard'
+import Research from '../pages/Research'
 
 // ResponsiveContainer needs layout, which jsdom does not provide
 vi.mock('recharts', async (orig) => {
@@ -103,6 +105,30 @@ describe('Analyze workspace', () => {
     expect(document.body.textContent).not.toMatch(/\bIoU\b|\bDice\b|Recall/)   // no ground-truth metrics for live output
   })
 
+  it('lets the user change models and run the same uploaded image again', async () => {
+    const infer = vi.fn(async (options) => {
+      const form = options.body
+      const modelId = form.get('model_id')
+      return respond({ analysis_id: ANALYSIS.id, model_id: modelId })
+    })
+    const models = { models: MODELS.models.map((model) => model.id === 'deeplab'
+      ? { ...model, availability: { status: 'available', available: true, message: 'ok' } }
+      : model) }
+    mockFetch({ overrides: {
+      '/api/models': async () => respond(models),
+      '/api/infer/image': infer,
+    } })
+    wrap(<Analyze />)
+    await screen.findByText('DeepLabV3+')
+    fireEvent.change(screen.getByTestId('file-input'), { target: { files: [new File(['x'], 'a.png', { type: 'image/png' })] } })
+    fireEvent.click(screen.getByRole('button', { name: /Run analysis/ }))
+    await screen.findByText('Instance 01')
+    fireEvent.click(screen.getByRole('radio', { name: /DeepLabV3\+/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Run analysis/ }))
+    await waitFor(() => expect(infer).toHaveBeenCalledTimes(2))
+    expect(infer.mock.calls.map(([options]) => options.body.get('model_id'))).toEqual(['unet', 'deeplab'])
+  })
+
   it('lets the user hide an instance without touching any measurement', async () => {
     mockFetch({ history: [HISTORY_ITEM], latest: ANALYSIS })
     wrap(<Analyze />)
@@ -135,41 +161,44 @@ describe('Analyze workspace', () => {
 })
 
 describe('Results page', () => {
-  it('keeps LADOS and De Kerf separate and renders saved values', async () => {
+  it('shows only analysis history', async () => {
     mockFetch()
     wrap(<Results />)
-    await screen.findByText('Semantic / pixel-level comparison')
-    expect(screen.getAllByText('0.7000').length).toBeGreaterThan(0)         // LADOS DeepLab IoU from the payload
-    await screen.findByText('YOLO26n-Seg · instance segmentation')
-    expect(screen.getByText(/not human-annotated/i)).toBeTruthy()
-    expect(screen.getByText(/not comparable/i)).toBeTruthy()
-    expect(screen.getAllByText('Box').length).toBeGreaterThan(0)
-    expect(screen.queryByText(/best model|universally/i)).toBeNull()
-    // the De Kerf model must not appear in the LADOS table
-    const table = screen.getAllByRole('table')[0]
-    expect(table.textContent).not.toMatch(/YOLO26/)
-  })
-
-  it('shows a clean empty state when the De Kerf results are unavailable', async () => {
-    mockFetch({ overrides: { '/api/results/dekerf': async () => respond({ available: false }) } })
-    wrap(<Results />)
-    await screen.findByText('Results not available')
-  })
-
-  it('shows a retryable error when results cannot be loaded', async () => {
-    mockFetch({ overrides: { '/api/results/comparison': async () => respond({ error: { code: 'results_not_found', message: 'Result file not found' } }, 404) } })
-    wrap(<Results />)
-    await screen.findByText('Could not load experiment results')
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+    await screen.findByRole('heading', { name: 'Analysis history' })
+    expect(screen.queryByText('Experiments')).toBeNull()
+    expect(screen.queryByText('Semantic / pixel-level comparison')).toBeNull()
   })
 
   it('lists saved analyses in the history tab', async () => {
     mockFetch({ history: [HISTORY_ITEM] })
     wrap(<Results />)
-    fireEvent.click(await screen.findByRole('tab', { name: 'Analysis history' }))
     await screen.findByRole('heading', { name: 'Analysis history' })
     expect(screen.getByText('U-Net')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Delete analysis' })).toBeTruthy()
+  })
+})
+
+describe('Research page', () => {
+  it('does not show limitations or future scope sections', async () => {
+    mockFetch()
+    wrap(<Research />)
+    await screen.findByText('What PetroVision does — and what it does not')
+    expect(screen.queryByRole('heading', { name: 'Limitations' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Future direction' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Model Results' })).toBeNull()
+  })
+})
+
+describe('Analytics dashboard', () => {
+  it('opens a selected saved analysis with original, prediction, overlay and image metrics', async () => {
+    mockFetch({ history: [HISTORY_ITEM], latest: ANALYSIS })
+    wrap(<AnalyticsDashboard />)
+    await screen.findByText('Source image')
+    expect(screen.getByText('Predicted regions')).toBeTruthy()
+    expect(screen.getByText('Prediction overlay')).toBeTruthy()
+    expect(screen.getByText('Region perimeter')).toBeTruthy()
+    expect(screen.getByText('Inference speed')).toBeTruthy()
+    expect(screen.getAllByText('Perimeter').length).toBeGreaterThan(0)
   })
 })
 

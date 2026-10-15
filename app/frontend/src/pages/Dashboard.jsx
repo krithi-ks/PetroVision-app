@@ -1669,7 +1669,7 @@ export default function Dashboard() {
               </li>
             ))}
           </ul>
-          <Link to="/results" className="mt-4 inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.1em] text-accent hover:underline"><IconLayers width={14} height={14} /> Research results →</Link>
+          <Link to="/results" className="mt-4 inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.1em] text-accent hover:underline"><IconLayers width={14} height={14} /> Analysis history →</Link>
         </div>
       </section>
 

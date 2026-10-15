@@ -6,8 +6,8 @@ Every predictor exposes::
     predict_mask(image, (out_w, out_h))     -> boolean ndarray [out_h, out_w]; True = predicted
                                                petroleum-like region (Oil + Emulsion + Sheen)
 
-They reuse the project's existing code where it exists (``src.vision.unet.UNet``) and rebuild
-the other architectures exactly like the training notebooks did. Preprocessing and decision
+The U-Net is implemented in this package to match the saved checkpoint, and other architectures
+are rebuilt as in the training notebooks. Preprocessing and decision
 rules (sigmoid >= 0.5, Mask2Former class id 1, YOLO imgsz=640 / conf=0.25 / retina masks) are the
 ones used in the evaluation notebooks. Nothing here is trained or fitted at runtime.
 """
@@ -15,10 +15,9 @@ ones used in the evaluation notebooks. Nothing here is trained or fitted at runt
 from __future__ import annotations
 
 import logging
-import sys
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -186,10 +185,7 @@ class _SemanticBinaryPredictor(BasePredictor):
 
 class UNetPredictor(_SemanticBinaryPredictor):
     def _load(self):
-        project_root = str(self.settings.project_root)
-        if project_root not in sys.path:
-            sys.path.insert(0, project_root)
-        from src.vision.unet import UNet   # existing PetroVision implementation (not copied)
+        from .unet import UNet
 
         checkpoint = read_checkpoint(self.checkpoint)
         model = UNet(in_channels=3, out_channels=1)
@@ -247,7 +243,7 @@ class Mask2FormerPredictor(BasePredictor):
         id2label = {0: "background", 1: "petroleum"}
         label2id = {"background": 0, "petroleum": 1}
         try:
-            config = Mask2FormerConfig.from_pretrained(source, num_labels=2, id2label=id2label, label2id=label2id)
+            config = Mask2FormerConfig.from_pretrained(source)
             self._processor = AutoImageProcessor.from_pretrained(
                 source, do_resize=True, size={"height": MODEL_INPUT_SIZE[1], "width": MODEL_INPUT_SIZE[0]}
             )

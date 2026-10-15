@@ -53,6 +53,7 @@ function InstanceCard({ inst, selected, hidden, onSelect, onToggle, index }) {
 export default function Analyze() {
   const { models, modelsLoading, modelsError, refreshModels, current, setCurrent, run, analyze, history, openAnalysis, removeAnalysis, play } = useApp()
   const [file, setFile] = useState(null)
+  const [analyzedFile, setAnalyzedFile] = useState(null)
   const [preview, setPreview] = useState(null)
   const [modelId, setModelId] = useState(null)
   const [mode, setMode] = useState('instances')
@@ -106,14 +107,19 @@ export default function Analyze() {
     audio.play('ui_expand')
   }, [])
 
-  const execute = async () => { if (file && modelId) { await audio.unlock(); await analyze(file, modelId); setFile(null) } }
+  const execute = async () => {
+    if (!file || !modelId) return
+    await audio.unlock()
+    const result = await analyze(file, modelId)
+    if (result) setAnalyzedFile(file)
+  }
 
   const opts = useMemo(() => ({ mode, color, opacity, showBoxes, showLabels, hidden, selected, hover }), [mode, color, opacity, showBoxes, showLabels, hidden, selected, hover])
   const resetDisplay = () => { setMode(view?.instances.some((i) => i.kind === 'instance') ? 'instances' : 'overlay'); setColor(DEFAULTS.color); setOpacity(DEFAULTS.opacity); setShowBoxes(false); setShowLabels(true); setHidden(new Set()); setSelected(null) }
   const toggleHidden = (idx) => setHidden((h) => { const n = new Set(h); n.has(idx) ? n.delete(idx) : n.add(idx); return n })
   const download = () => canvasRef.current?.toBlob((b) => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `petrovision_${view.id || 'analysis'}_${mode}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000) })
 
-  const showPreview = !!file && !running                 // a new image is waiting to be analysed
+  const showPreview = !!file && file !== analyzedFile && !running
   const noModels = !modelsLoading && models.length > 0 && !models.some((m) => m.availability.available)
   const m = view?.measurements
   const instCount = view?.instance_count ?? 0
@@ -160,6 +166,7 @@ export default function Analyze() {
           {/* ---------------- instances + metrics ---------------- */}
           <div className="border-t border-line bg-surface-2/60 px-4 py-3">
             {run.status === 'error' && run.error && <Notice tone="error" className="mb-3" title="Analysis could not be completed">{run.error.message}</Notice>}
+            {view?.id && !showPreview && !running && <Link to="/dashboard" state={{ analysisId: view.id }} className="mb-3 inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.1em] text-accent hover:underline">View this analysis in dashboard →</Link>}
             {view && !showPreview ? (
               <div className="flex gap-3 overflow-x-auto pb-1">
                 <div className="w-[236px] shrink-0 border border-line bg-surface p-3">
@@ -176,7 +183,7 @@ export default function Analyze() {
                 {view.instances.length ? view.instances.map((inst, i) => (
                   <InstanceCard key={inst.index} index={i} inst={inst} selected={selected === inst.index} hidden={hidden.has(inst.index)}
                     onSelect={(x) => setSelected((s) => (s === x ? null : x))} onToggle={toggleHidden} />
-                )) : <div className="grid min-w-[260px] place-items-center border border-dashed border-line-strong px-6 text-center text-[13px] text-ink-2">No petroleum-like region was predicted in this image.</div>}
+                )) : <div className="grid min-w-[260px] place-items-center border border-dashed border-line-strong px-6 text-center text-[13px] text-ink-2">{view.model?.id === 'yolo26' ? 'YOLO26 found no oil instances in this image. It was trained on De Kerf drone imagery, so results may vary on images from other scenes.' : 'No petroleum-like region was predicted in this image.'}</div>}
               </div>
             ) : <p className="py-3 text-center text-[13px] text-ink-3">{showPreview ? 'Choose a model and run the analysis.' : 'Instances and measurements appear here after an analysis.'}</p>}
           </div>

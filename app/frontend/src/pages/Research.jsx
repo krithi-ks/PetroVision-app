@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useApp } from '../context/AppContext'
 import { Badge, Notice, PageHeader, Panel } from '../components/ui'
@@ -59,28 +58,13 @@ export default function Research() {
         </Section>
 
         <Section n={5} title="Evaluation">
-          <p>Models were scored pixel-wise on the held-out test split with IoU, Dice, precision, recall and accuracy{meth?.test_images ? ` (${meth.test_images} test images)` : ''}; efficiency was measured separately{meth?.efficiency_hardware ? ` on ${meth.efficiency_hardware}` : ''}. The numbers are on the <Link to="/results" className="text-accent underline">Model Results</Link> page, loaded from the saved result files.</p>
+          <p>Models were scored pixel-wise on the held-out test split with IoU, Dice, precision, recall and accuracy{meth?.test_images ? ` (${meth.test_images} test images)` : ''}; efficiency was measured separately{meth?.efficiency_hardware ? ` on ${meth.efficiency_hardware}` : ''}. These saved experiment metrics are separate from Results, which is reserved for your analysis history.</p>
           <Notice tone="info" title="Research results vs. live demo outputs">
             <span className="mr-2 inline-flex"><Badge kind="research">Saved experiment</Badge></span> measured on test images with ground truth.
             <br /><span className="mr-2 mt-1 inline-flex"><Badge kind="live">Live output</Badge></span> produced now on your image; with no ground truth, no IoU, Dice, precision or recall is shown.
           </Notice>
         </Section>
 
-        <Section n={7} title="Limitations">
-          <ul className="list-disc space-y-2 pl-5">
-            {(summary?.limitations?.length ? summary.limitations : ['Limitations could not be loaded from the results files.']).map((l) => <li key={l}>{l}</li>)}
-            <li>The app does not identify whether a region is petrol, diesel or another product, and reports no concentration, thickness or volume.</li>
-            <li>Scenes unlike the training imagery (for example indoor camera views) can produce meaningless predictions.</li>
-          </ul>
-        </Section>
-
-        <Section n={8} title="Future direction">
-          <p>Computer vision answers where visible contamination is; it cannot say what it is. Planned future work adds sensor-based classification as a separate, complementary signal. This is not part of the current application.</p>
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="border border-accent/40 bg-accent-soft p-4"><div className="label text-accent">Camera</div><div className="mt-1 text-[15px] font-semibold text-ink">Where is visible contamination?</div><p className="mt-1 text-sm text-ink-2">Implemented: segmentation of visible petroleum-like regions.</p></div>
-            <div className="border border-dashed border-line-strong p-4"><div className="label">Sensors</div><div className="mt-1 text-[15px] font-semibold text-ink">What class or type do sensor measurements indicate?</div><p className="mt-1 text-sm text-ink-2">Future work. No sensor data or sensor predictions exist in this application.</p></div>
-          </div>
-        </Section>
       </div>
     </>
   )

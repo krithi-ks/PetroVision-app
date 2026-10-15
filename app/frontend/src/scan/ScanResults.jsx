@@ -90,7 +90,7 @@ function LatencyChart({ values }) {
   )
 }
 
-export default function ScanResults({ result, status, stats, scanning, selected, onSelect, onSave, save, canSave }) {
+export default function ScanResults({ result, status, stats, scanning, selected, onSelect, onSave, save, canSave, model }) {
   const instances = result?.instances || []
   const regionKind = instances[0]?.kind === 'region'
   return (
@@ -113,6 +113,9 @@ export default function ScanResults({ result, status, stats, scanning, selected,
           <Counter label="Throughput" value={stats.fps} digits={1} unit="FPS" />
           <Counter label="Frames analyzed" value={stats.frames || null} />
         </div>
+        {result && instances.length === 0 && model?.id === 'yolo26' && (
+          <p className="mt-3 text-xs text-ink-3">YOLO26 found no oil instances in this frame. It was trained on De Kerf drone imagery, so results may vary on scenes outside that domain.</p>
+        )}
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_380px]">
           <div>

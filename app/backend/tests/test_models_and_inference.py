@@ -117,20 +117,18 @@ def test_image_inference_payload(client, real_png, model_id):
 
 
 def test_unet_matches_reference_pipeline(client, settings, real_image, real_png):
-    """The API must reproduce the project's own preprocessing + UNet + sigmoid>=0.5 exactly."""
+    """The API must reproduce the saved U-Net + preprocessing + sigmoid>=0.5 exactly."""
     _need(client, "unet")
-    import sys
-    sys.path.insert(0, str(settings.project_root))
-    from src.vision.unet import UNet
+    from petrovision_api.inference.unet import UNet
 
     ckpt = torch.load(settings.models_dir / "cv_unet_001_best.pt", map_location="cpu", weights_only=False)
-    ref = UNet(3, 1)
-    ref.load_state_dict(ckpt["model_state_dict"])
-    ref.eval()
+    model = UNet(3, 1)
+    model.load_state_dict(ckpt["model_state_dict"])
+    model.eval()
     resized = real_image.resize((256, 256), Image.Resampling.BILINEAR)           # as LADOSDataset
     x = torch.from_numpy(np.asarray(resized, dtype=np.float32) / 255.0).permute(2, 0, 1).unsqueeze(0)
     with torch.no_grad():
-        expected = (torch.sigmoid(ref(x)) >= 0.5)[0, 0].numpy()
+        expected = (torch.sigmoid(model(x)) >= 0.5)[0, 0].numpy()
 
     small = to_bytes(real_image.resize((256, 256), Image.Resampling.BILINEAR))
     j = client.post("/api/infer/image", files={"file": ("s.png", small, "image/png")}, data={"model_id": "unet"}).json()
