@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
+import { useAuth } from '../context/AuthContext'
 import { audio } from '../audio/AudioManager'
 import SoundControl from './SoundControl'
 import { IconChevron, IconClose, IconMenu, Logo } from './icons'
@@ -70,8 +71,10 @@ function MoreMenu() {
 
 export default function Layout() {
   const [open, setOpen] = useState(false)
+  const [signOutError, setSignOutError] = useState('')
   const { pathname } = useLocation()
   const { status } = useApp()
+  const { user, logout } = useAuth()
   const fullBleed = pathname === '/live'
 
   // Browsers only allow audio after a user gesture: unlock on the first interaction anywhere.
@@ -115,6 +118,22 @@ export default function Layout() {
             <SystemState />
             {!fullBleed && <SoundControl />}
             <MoreMenu />
+            {user?.role === 'admin' && (
+              <NavLink to="/admin" className={({ isActive }) => `hidden rounded border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] sm:inline-flex ${isActive ? 'border-teal-600 bg-teal-700 text-white' : 'border-line-strong text-ink-2 hover:border-teal-600 hover:text-teal-800'}`}>
+                Access
+              </NavLink>
+            )}
+            <button
+              type="button"
+              onClick={async () => {
+                setSignOutError('')
+                try { await logout() } catch (err) { setSignOutError(err.message || 'Could not sign out.') }
+              }}
+              title={user?.email}
+              className="hidden h-9 rounded border border-line-strong px-2.5 font-mono text-[10px] uppercase tracking-[0.1em] text-ink-2 hover:border-ink hover:text-ink sm:block"
+            >
+              Sign out
+            </button>
             <button className="grid h-9 w-9 place-items-center rounded border border-line-strong lg:hidden" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label="Menu">
               {open ? <IconClose /> : <IconMenu />}
             </button>
@@ -126,9 +145,15 @@ export default function Layout() {
               <NavLink key={n.to} to={n.to} end={n.end}
                 className={({ isActive }) => `block py-2.5 font-mono text-[12px] uppercase tracking-[0.12em] ${isActive ? 'text-accent' : 'text-ink-2'}`}>{n.label}</NavLink>
             ))}
+            {user?.role === 'admin' && <NavLink to="/admin" className={({ isActive }) => `block py-2.5 font-mono text-[12px] uppercase tracking-[0.12em] ${isActive ? 'text-accent' : 'text-ink-2'}`}>People & access</NavLink>}
+            <button type="button" onClick={async () => {
+              setSignOutError('')
+              try { await logout() } catch (err) { setSignOutError(err.message || 'Could not sign out.') }
+            }} className="block py-2.5 font-mono text-[12px] uppercase tracking-[0.12em] text-ink-2">Sign out</button>
           </nav>
         )}
       </header>
+      {signOutError && <div role="alert" className="border-b border-bad/30 bg-bad/10 px-4 py-2 text-center text-xs text-bad">{signOutError}</div>}
 
       <main className={fullBleed ? 'flex-1' : 'mx-auto w-full max-w-[1500px] flex-1 px-4 py-8 sm:px-6'}>
         <div key={pathname} className="animate-page"><Outlet /></div>

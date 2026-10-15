@@ -41,6 +41,14 @@ Windows: `app\start.ps1`. Linux/macOS: `app/start.sh`.
 
 > Webcam access requires `http://localhost` / `127.0.0.1` or HTTPS.
 
+## Authentication and access management
+
+The app requires a signed-in account. Before the first sign-in, copy `app/backend/.env.example` to `app/backend/.env` and set `PETROVISION_ADMIN_EMAIL` and `PETROVISION_ADMIN_PASSWORD` to the first administrator's email and a unique password of at least 12 characters. The first account is created once; changing those variables later does not reset an existing account. There is no public signup.
+
+The administrator can open **Access** in the app header to create user or admin accounts, revoke access, and restore accounts. New accounts use an administrator-chosen initial password, which should be shared privately. Revoking an account also ends its active sessions. Accounts and sessions are stored in `app/backend/data/users.sqlite3` by default; set `PETROVISION_AUTH_DB` to move the database.
+
+For production, serve the site and API over HTTPS and set `PETROVISION_AUTH_COOKIE_SECURE=true`. Back up and restrict filesystem access to the account database, and never commit the backend `.env` file.
+
 ## YOLO26n-Seg (De Kerf) slot
 
 The repository does not contain a YOLO26 checkpoint or experiment results, so the app shows **YOLO26n-Seg as unavailable** until the file exists. Put it at `models/cv_yolo26_001_best.pt` (any file matching `cv_yolo26*_best.pt` / `*yolo26*best.pt` anywhere under `models/` is found automatically) or set `PETROVISION_CKPT_YOLO26`. The inference image size is read from the checkpoint. If the model has several classes, choose which count as petroleum-like with `PETROVISION_YOLO26_CLASSES=oil` (default: all instances).

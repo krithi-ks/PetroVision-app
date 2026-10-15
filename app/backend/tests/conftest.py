@@ -18,12 +18,25 @@ from petrovision_api.main import create_app  # noqa: E402
 @pytest.fixture(scope="session")
 def settings(tmp_path_factory) -> Settings:
     # analyses written by the tests go to a throw-away folder, never into the real history
-    return dataclasses.replace(Settings.from_env(), analyses_dir=tmp_path_factory.mktemp("analyses"))
+    return dataclasses.replace(
+        Settings.from_env(),
+        analyses_dir=tmp_path_factory.mktemp("analyses"),
+        auth_db_path=tmp_path_factory.mktemp("auth") / "users.sqlite3",
+        bootstrap_admin_email="admin@example.test",
+        bootstrap_admin_password="test-admin-password-123",
+        auth_cookie_secure=False,
+    )
 
 
 @pytest.fixture(scope="session")
 def client(settings):
-    return TestClient(create_app(settings))
+    test_client = TestClient(create_app(settings))
+    response = test_client.post(
+        "/api/auth/login",
+        json={"email": settings.bootstrap_admin_email, "password": settings.bootstrap_admin_password},
+    )
+    assert response.status_code == 200
+    return test_client
 
 
 @pytest.fixture(scope="session")
@@ -60,3 +73,12 @@ def real_png(real_image) -> bytes:
 
 def with_settings(settings, **changes):
     return dataclasses.replace(settings, **changes)
+
+
+def login_as_admin(client, settings):
+    response = client.post(
+        "/api/auth/login",
+        json={"email": settings.bootstrap_admin_email, "password": settings.bootstrap_admin_password},
+    )
+    assert response.status_code == 200
+    return client

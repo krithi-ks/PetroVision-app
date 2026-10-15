@@ -12,7 +12,7 @@ import httpx
 
 from fastapi import HTTPException
 
-from fastapi import APIRouter, Body, File, Form, Query, Request, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 from starlette.concurrency import run_in_threadpool
 
@@ -21,8 +21,9 @@ from ..errors import ImageDecodeError, PayloadTooLargeError, PetroVisionError, R
 from ..imaging import decode_image
 from ..inference.manager import describe_device
 from ..pipeline import analyze_image
+from .auth import require_user
 
-router = APIRouter(prefix="/api")
+router = APIRouter(prefix="/api", dependencies=[Depends(require_user)])
 log = logging.getLogger("petrovision")
 
 FRAME_MAX_MASK_SIDE = 480

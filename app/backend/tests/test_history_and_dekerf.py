@@ -4,7 +4,7 @@ import re
 
 import pytest
 
-from conftest import to_bytes
+from conftest import login_as_admin, to_bytes
 
 
 def _need(client, model_id):
@@ -36,7 +36,7 @@ def test_dekerf_missing_is_a_clean_empty_state(settings, tmp_path):
     from fastapi.testclient import TestClient
     from petrovision_api.main import create_app
 
-    c = TestClient(create_app(dataclasses.replace(settings, results_dir=tmp_path, project_root=tmp_path)))
+    c = login_as_admin(TestClient(create_app(dataclasses.replace(settings, results_dir=tmp_path, project_root=tmp_path))), settings)
     assert c.get("/api/results/dekerf").json() == {"available": False}
 
 
@@ -112,7 +112,7 @@ def test_history_is_capped(settings, real_png, tmp_path):
     from fastapi.testclient import TestClient
     from petrovision_api.main import create_app
 
-    c = TestClient(create_app(dataclasses.replace(settings, analyses_dir=tmp_path, history_max=10)))
+    c = login_as_admin(TestClient(create_app(dataclasses.replace(settings, analyses_dir=tmp_path, history_max=10))), settings)
     if c.get("/api/models/unet").json()["availability"]["status"] != "available":
         pytest.skip("unet not available")
     for _ in range(12):

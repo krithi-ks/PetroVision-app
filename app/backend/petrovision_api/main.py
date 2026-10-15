@@ -17,12 +17,14 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
+from .auth_store import AuthStore
 from .config import Settings
 from .errors import PetroVisionError
 from .history import HistoryStore
 from .inference.manager import ModelManager
 from .results import ResultsRepository
 from .routes.api import router
+from .routes.auth import router as auth_router
 
 log = logging.getLogger("petrovision")
 
@@ -38,12 +40,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.manager = ModelManager(settings)
     app.state.results = ResultsRepository(settings)
     app.state.history = HistoryStore(settings.analyses_dir, settings.history_max)
+    app.state.auth_store = AuthStore(
+        settings.auth_db_path,
+        settings.bootstrap_admin_email,
+        settings.bootstrap_admin_password,
+    )
 
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.cors_origins),
         allow_methods=["*"],
         allow_headers=["*"],
+        allow_credentials=True,
     )
 
     @app.exception_handler(PetroVisionError)
@@ -63,6 +71,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content={"error": {"code": "internal_error", "message": "Something went wrong while analysing. Please try again."}},
         )
 
+    app.include_router(auth_router)
     app.include_router(router)
     _log_startup_report(app.state.manager, settings)
     _mount_frontend(app, settings.frontend_dist)

@@ -14,7 +14,7 @@ export class ApiError extends Error {
 async function request(path, options = {}) {
   let res
   try {
-    res = await fetch(`${BASE}${path}`, options)
+    res = await fetch(`${BASE}${path}`, { credentials: 'include', ...options })
   } catch (err) {
     if (err?.name === 'AbortError') throw err
     throw new ApiError('PetroVision is offline. Start the application and try again.', {
@@ -45,6 +45,24 @@ async function request(path, options = {}) {
 
 
 export const api = {
+  login: (credentials) => request('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(credentials),
+  }),
+  session: () => request('/api/auth/session'),
+  logout: () => request('/api/auth/logout', { method: 'POST' }),
+  adminUsers: () => request('/api/admin/users'),
+  createUser: (user) => request('/api/admin/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(user),
+  }),
+  setUserAccess: (id, active) => request(`/api/admin/users/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ active }),
+  }),
   status: () => request('/api/status'),
   models: () => request('/api/models'),
   loadModel: (id) => request(`/api/models/${encodeURIComponent(id)}/load`, { method: 'POST' }),

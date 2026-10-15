@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react'
-import { Route, Routes } from 'react-router-dom'
+import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import Layout from './components/Layout'
 import { Spinner } from './components/ui'
 import Dashboard from './pages/Dashboard'
@@ -7,6 +7,9 @@ import Analyze from './pages/Analyze'
 import Live from './pages/Live'
 import Research from './pages/Research'
 import About from './pages/About'
+import Login from './pages/Login'
+import AdminUsers from './pages/AdminUsers'
+import { useAuth } from './context/AuthContext'
 
 // Heavy libraries (charts, three.js) load only when their page is opened.
 const Results = lazy(() => import('./pages/Results'))
@@ -29,20 +32,37 @@ function NotFound() {
   )
 }
 
+function RequireAuth() {
+  const { user, loading } = useAuth()
+  const location = useLocation()
+  if (loading) return <Loading />
+  if (!user) return <Navigate to="/login" replace state={{ from: location }} />
+  return <Outlet />
+}
+
+function RequireAdmin() {
+  const { user } = useAuth()
+  return user?.role === 'admin' ? <AdminUsers /> : <Navigate to="/" replace />
+}
+
 export default function App() {
   return (
     <Suspense fallback={<Loading />}>
       <Routes>
-        <Route element={<Layout />}>
-          <Route index element={<Dashboard />} />
-          <Route path="analyze" element={<Analyze />} />
-          <Route path="live" element={<Live />} />
-          <Route path="results" element={<Results />} />
-          <Route path="3d" element={<Visualization3D />} />
-          <Route path="visualize" element={<Visualization3D />} />
-          <Route path="research" element={<Research />} />
-          <Route path="about" element={<About />} />
-          <Route path="*" element={<NotFound />} />
+        <Route path="login" element={<Login />} />
+        <Route element={<RequireAuth />}>
+          <Route element={<Layout />}>
+            <Route index element={<Dashboard />} />
+            <Route path="analyze" element={<Analyze />} />
+            <Route path="live" element={<Live />} />
+            <Route path="results" element={<Results />} />
+            <Route path="3d" element={<Visualization3D />} />
+            <Route path="visualize" element={<Visualization3D />} />
+            <Route path="research" element={<Research />} />
+            <Route path="about" element={<About />} />
+            <Route path="admin" element={<RequireAdmin />} />
+            <Route path="*" element={<NotFound />} />
+          </Route>
         </Route>
       </Routes>
     </Suspense>

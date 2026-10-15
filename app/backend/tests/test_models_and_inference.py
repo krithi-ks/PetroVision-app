@@ -7,7 +7,7 @@ import pytest
 import torch
 from PIL import Image
 
-from conftest import to_bytes, with_settings
+from conftest import login_as_admin, to_bytes, with_settings
 
 
 def _status(client, model_id):
@@ -58,7 +58,7 @@ def test_missing_checkpoint_is_reported_not_faked(settings, real_png, tmp_path):
     from fastapi.testclient import TestClient
     from petrovision_api.main import create_app
 
-    c = TestClient(create_app(with_settings(settings, models_dir=tmp_path)))
+    c = login_as_admin(TestClient(create_app(with_settings(settings, models_dir=tmp_path))), settings)
     assert all(m["availability"]["status"] == "checkpoint_missing" for m in c.get("/api/models").json()["models"])
     r = c.post("/api/infer/image", files={"file": ("a.png", real_png, "image/png")}, data={"model_id": "unet"})
     assert r.status_code == 503 and r.json()["error"]["code"] == "checkpoint_missing"
@@ -81,7 +81,7 @@ def test_upload_limit(settings, real_png):
     from fastapi.testclient import TestClient
     from petrovision_api.main import create_app
 
-    c = TestClient(create_app(with_settings(settings, max_upload_bytes=1000)))
+    c = login_as_admin(TestClient(create_app(with_settings(settings, max_upload_bytes=1000))), settings)
     r = c.post("/api/infer/image", files={"file": ("a.png", real_png, "image/png")}, data={"model_id": "unet"})
     assert r.status_code == 413
 
@@ -174,7 +174,7 @@ def test_large_image_mask_is_capped(settings, real_image):
     from fastapi.testclient import TestClient
     from petrovision_api.main import create_app
 
-    c = TestClient(create_app(with_settings(settings, max_mask_side=300)))
+    c = login_as_admin(TestClient(create_app(with_settings(settings, max_mask_side=300))), settings)
     if c.get("/api/models/unet").json()["availability"]["status"] != "available":
         pytest.skip("unet not available")
     j = c.post("/api/infer/image", files={"file": ("a.png", to_bytes(real_image), "image/png")}, data={"model_id": "unet"}).json()

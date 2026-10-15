@@ -57,6 +57,10 @@ class Settings:
     mask2former_source: str         # HF hub id or local folder with config + preprocessor config
     analyses_dir: Path              # persisted analyses (history)
     history_max: int
+    auth_db_path: Path
+    bootstrap_admin_email: str
+    bootstrap_admin_password: str
+    auth_cookie_secure: bool
     target_classes: dict            # model_id -> tuple of class names that count as 'petroleum-like' (None = all)
 
     @classmethod
@@ -100,4 +104,8 @@ class Settings:
             target_classes=targets,
             analyses_dir=Path(os.environ.get("PETROVISION_ANALYSES_DIR", BACKEND_DIR / "data" / "analyses")).expanduser(),
             history_max=max(10, _int_env("PETROVISION_HISTORY_MAX", 300)),
+            auth_db_path=Path(os.environ.get("PETROVISION_AUTH_DB", BACKEND_DIR / "data" / "users.sqlite3")).expanduser(),
+            bootstrap_admin_email=os.environ.get("PETROVISION_ADMIN_EMAIL", "").strip(),
+            bootstrap_admin_password=os.environ.get("PETROVISION_ADMIN_PASSWORD", ""),
+            auth_cookie_secure=os.environ.get("PETROVISION_AUTH_COOKIE_SECURE", "false").lower() in {"1", "true", "yes"},
         )

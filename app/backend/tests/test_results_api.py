@@ -45,10 +45,10 @@ def test_history_endpoints(client):
 
 def test_missing_results_dir_gives_clean_error(settings, tmp_path):
     from fastapi.testclient import TestClient
-    from conftest import with_settings
+    from conftest import login_as_admin, with_settings
     from petrovision_api.main import create_app
 
-    c = TestClient(create_app(with_settings(settings, results_dir=tmp_path)))
+    c = login_as_admin(TestClient(create_app(with_settings(settings, results_dir=tmp_path))), settings)
     r = c.get("/api/results/comparison")
     assert r.status_code == 404 and r.json()["error"]["code"] == "results_not_found"
     assert c.get("/api/models").status_code == 200       # model list degrades gracefully

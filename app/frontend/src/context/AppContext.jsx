@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { api } from '../lib/api'
 import { audio } from '../audio/AudioManager'
 import { useAudio } from '../audio/useAudio'
+import { useOptionalAuth } from './AuthContext'
 
 const AppContext = createContext(null)
 
@@ -14,6 +15,7 @@ export function useApp() {
 const STATUS_POLL_MS = 15000
 
 export function AppProvider({ children }) {
+  const auth = useOptionalAuth()
   // ---- sound (UI feedback only) -------------------------------------------------
   const audioState = useAudio()
   const muted = !audioState.enabled
@@ -61,11 +63,12 @@ export function AppProvider({ children }) {
   }, [refreshHistory])
 
   useEffect(() => {
+    if (auth && (auth.loading || !auth.user)) return undefined
     refreshStatus(); refreshModels(); refreshHistory()
     api.latest().then((l) => l.analysis && setCurrent((c) => c || l.analysis)).catch(() => {})
     const t = setInterval(refreshStatus, STATUS_POLL_MS)
     return () => clearInterval(t)
-  }, [refreshStatus, refreshModels, refreshHistory])
+  }, [auth?.loading, auth?.user?.id, refreshStatus, refreshModels, refreshHistory])
 
   /** Run real inference on an uploaded image. The backend saves the result; we then show the saved record. */
   const analyze = useCallback(async (file, modelId) => {
